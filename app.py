@@ -94,9 +94,33 @@ def home():
 # ========================
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if request.method == "POST":
+        try:
+            hashed = bcrypt.hashpw(
+                request.form['password'].encode(),
+                bcrypt.gensalt()
+            )
+
+            conn = get_db_connection()
+            cur = conn.cursor()
+
+            cur.execute(
+                "INSERT INTO users (username,password,role) VALUES (%s,%s,%s)",
+                (request.form['username'], hashed, request.form['role'])
+            )
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            return f"Error: {e}"
+
     return '''
     <h2>Create Account</h2>
-    <form method="post" action="/register">
+    <form method="post">
     Username: <input name="username" required><br><br>
     Password: <input type="password" name="password" required><br><br>
     <select name="role">
@@ -106,21 +130,6 @@ def register():
     <button>Register</button>
     </form>
     '''
-
-@app.route('/register', methods=['POST'])
-def register():
-    try:
-        hashed = bcrypt.hashpw(request.form['password'].encode(), bcrypt.gensalt())
-
-        cursor.execute(
-            "INSERT INTO users (username,password,role) VALUES (%s,%s,%s)",
-            (request.form['username'], hashed, request.form['role'])
-        )
-        conn.commit()
-
-        return redirect(url_for('login_page'))
-    except Exception as e:
-        return f"Error: {e}"
 
 # ========================
 # LOGIN
