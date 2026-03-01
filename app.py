@@ -307,18 +307,71 @@ def add_patient_page():
     if session.get("role") != "technician":
         return "Unauthorized"
 
-    return """
-    <h2>Add Patient</h2>
-    <form method="post" action="/add_patient" enctype="multipart/form-data">
-    Name: <input name="name" required><br><br>
-    Age: <input name="age" required><br><br>
-    Gender: <input name="gender" required><br><br>
-    Contact: <input name="contact" required><br><br>
-    Upload Image: <input type="file" name="file"><br><br>
-    <button>Add</button>
-    </form>
-    """
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<title>Add Patient</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
 
+<div class="container mt-4">
+<div class="card shadow p-4">
+<h4 class="mb-4">Register Patient</h4>
+
+<form method="post" action="/add_patient" enctype="multipart/form-data">
+
+<div class="row">
+<div class="col-md-6 mb-3">
+<input class="form-control" name="name" placeholder="Name" required>
+</div>
+<div class="col-md-3 mb-3">
+<input class="form-control" name="age" placeholder="Age" required>
+</div>
+<div class="col-md-3 mb-3">
+<input class="form-control" name="gender" placeholder="Gender" required>
+</div>
+</div>
+
+<input class="form-control mb-3" name="contact" placeholder="Contact" required>
+
+<h5 class="mt-4 mb-3">Vital Parameters</h5>
+
+<div class="row">
+<div class="col-md-4 mb-3">
+<input class="form-control" name="bp" placeholder="Blood Pressure (BP)">
+</div>
+<div class="col-md-4 mb-3">
+<input class="form-control" name="hr" placeholder="Heart Rate (HR)">
+</div>
+<div class="col-md-4 mb-3">
+<input class="form-control" name="temperature" placeholder="Temperature">
+</div>
+</div>
+
+<div class="row">
+<div class="col-md-4 mb-3">
+<input class="form-control" name="spo2" placeholder="SPO2">
+</div>
+<div class="col-md-4 mb-3">
+<input class="form-control" name="rr" placeholder="Respiratory Rate (RR)">
+</div>
+</div>
+
+<h5 class="mt-4">Upload Imaging Study</h5>
+<input type="file" class="form-control mb-3" name="file">
+
+<button class="btn btn-primary">Add Patient</button>
+<a href="/dashboard" class="btn btn-secondary">Back</a>
+
+</form>
+</div>
+</div>
+
+</body>
+</html>
+""")
 
 @app.route("/add_patient", methods=["POST"])
 def add_patient():
@@ -333,16 +386,22 @@ def add_patient():
 
     cur.execute("""
         INSERT INTO patients
-        (fhir_id,identifier_system,mrn,name,age,gender,contact,status,report)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        RETURNING id
+        (fhir_id,identifier_system,mrn,name,age,gender,contact,
+         bp,hr,temperature,spo2,rr,status,report)
+         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+         RETURNING id
     """,
-    (fhir_id, "hospital", mrn,
-     request.form["name"],
-     request.form["age"],
-     request.form["gender"],
-     request.form["contact"],
-     "Pending", ""))
+   (fhir_id, "hospital", mrn,
+    request.form["name"],
+    request.form["age"],
+    request.form["gender"],
+    request.form["contact"],
+    request.form["bp"],
+    request.form["hr"],
+    request.form["temperature"],
+    request.form["spo2"],
+    request.form["rr"],
+    "Pending", "")))
 
     patient_id = cur.fetchone()["id"]
     conn.commit()
