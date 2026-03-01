@@ -41,10 +41,50 @@ def get_db_connection():
 @app.route("/")
 def home():
     return render_template_string("""
-    <h1>Tele-Radiology System</h1>
-    <a href="/login_page">Login</a> |
-    <a href="/register">Register</a>
-    """)
+<!DOCTYPE html>
+<html>
+<head>
+<title>Tele-Radiology System</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+
+<style>
+body {
+    background: url('https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1600&q=80') no-repeat center center fixed;
+    background-size: cover;
+}
+.overlay {
+    background-color: rgba(0,0,0,0.6);
+    height: 100vh;
+}
+.center-box {
+    background: white;
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0 0 25px rgba(0,0,0,0.4);
+}
+</style>
+</head>
+
+<body>
+<div class="overlay d-flex justify-content-center align-items-center">
+<div class="center-box text-center">
+<h2 class="mb-4"><i class="fa-solid fa-x-ray"></i> Tele-Radiology System</h2>
+
+<a href="/login_page" class="btn btn-primary btn-lg m-2">
+<i class="fa-solid fa-right-to-bracket"></i> Login
+</a>
+
+<a href="/register" class="btn btn-success btn-lg m-2">
+<i class="fa-solid fa-user-plus"></i> Register
+</a>
+
+</div>
+</div>
+</body>
+</html>
+""")
 
 
 # =========================
@@ -206,26 +246,57 @@ def dashboard():
     conn.close()
 
     return render_template_string("""
-    <h2>{{ role.capitalize() }} Dashboard</h2>
+<!DOCTYPE html>
+<html>
+<head>
+<title>Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+</head>
+<body>
 
-    {% if role == "technician" %}
-    <a href="/add_patient_page">Add Patient</a><br><br>
-    {% endif %}
+<nav class="navbar navbar-dark bg-dark px-4">
+<span class="navbar-brand">
+<i class="fa-solid fa-hospital"></i> {{ role.capitalize() }} Dashboard
+</span>
+<a href="/logout" class="btn btn-danger">Logout</a>
+</nav>
 
-    <table border="1">
-    <tr><th>MRN</th><th>Name</th><th>Status</th><th>Open</th></tr>
-    {% for p in patients %}
-    <tr>
-        <td>{{ p.mrn }}</td>
-        <td>{{ p.name }}</td>
-        <td>{{ p.status }}</td>
-        <td><a href="/view/{{ p.id }}">Open</a></td>
-    </tr>
-    {% endfor %}
-    </table>
+<div class="container mt-4">
 
-    <br><a href="/logout">Logout</a>
-    """, patients=patients, role=session["role"])
+{% if role == "technician" %}
+<a href="/add_patient_page" class="btn btn-success mb-4">
+<i class="fa-solid fa-user-plus"></i> Add Patient
+</a>
+{% endif %}
+
+<div class="row">
+{% for p in patients %}
+<div class="col-md-4">
+<div class="card shadow mb-4">
+<div class="card-body">
+<h5 class="card-title">{{ p.mrn }}</h5>
+<p><strong>Name:</strong> {{ p.name }}</p>
+
+{% if p.status == "Pending" %}
+<p>Status: <span class="badge bg-warning text-dark">Pending</span></p>
+{% else %}
+<p>Status: <span class="badge bg-success">Reviewed</span></p>
+{% endif %}
+
+<a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">
+<i class="fa-solid fa-folder-open"></i> Open Case
+</a>
+</div>
+</div>
+</div>
+{% endfor %}
+</div>
+
+</div>
+</body>
+</html>
+""", patients=patients, role=session["role"])
 
 
 # =========================
