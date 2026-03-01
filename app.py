@@ -1,28 +1,11 @@
-from flask import Flask, request, redirect, session, render_template_string, send_from_directory
+from flask import Flask, request, redirect, session, render_template_string
 import bcrypt
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
-
-# =========================
-# FILE CONFIG
-# =========================
-UPLOAD_FOLDER = "uploads"
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "dcm"}
-
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-
-
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 # =========================
 # DATABASE CONNECTION
@@ -34,7 +17,6 @@ def get_db_connection():
         sslmode="require"
     )
 
-
 # =========================
 # HOME
 # =========================
@@ -45,10 +27,8 @@ def home():
 <html>
 <head>
 <title>Tele-Radiology System</title>
-
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
-
 <style>
 body {
     background: url('https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1600&q=80') no-repeat center center fixed;
@@ -66,26 +46,21 @@ body {
 }
 </style>
 </head>
-
 <body>
 <div class="overlay d-flex justify-content-center align-items-center">
 <div class="center-box text-center">
 <h2 class="mb-4"><i class="fa-solid fa-x-ray"></i> Tele-Radiology System</h2>
-
 <a href="/login_page" class="btn btn-primary btn-lg m-2">
 <i class="fa-solid fa-right-to-bracket"></i> Login
 </a>
-
 <a href="/register" class="btn btn-success btn-lg m-2">
 <i class="fa-solid fa-user-plus"></i> Register
 </a>
-
 </div>
 </div>
 </body>
 </html>
 """)
-
 
 # =========================
 # INIT DATABASE
@@ -95,7 +70,6 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # USERS TABLE
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -105,7 +79,6 @@ def init_db():
     );
     """)
 
-    # PATIENTS TABLE
     cur.execute("""
     CREATE TABLE IF NOT EXISTS patients (
         id SERIAL PRIMARY KEY,
@@ -126,7 +99,6 @@ def init_db():
     );
     """)
 
-    # SINGLE STUDIES TABLE (FIXED)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS studies (
         id SERIAL PRIMARY KEY,
@@ -141,7 +113,6 @@ def init_db():
     conn.close()
 
     return "Database initialized successfully!"
-
 
 # =========================
 # REGISTER
@@ -173,7 +144,7 @@ def register():
         conn.close()
         return redirect("/login_page")
 
-    return render_template_string("""
+    return """
     <h2>Create Account</h2>
     <form method="post">
     Username: <input name="username" required><br><br>
@@ -184,8 +155,7 @@ def register():
     </select><br><br>
     <button>Register</button>
     </form>
-    """)
-
+    """
 
 # =========================
 # LOGIN
@@ -206,7 +176,6 @@ def login():
         return "User not found"
 
     stored_password = user["password"]
-
     if isinstance(stored_password, memoryview):
         stored_password = stored_password.tobytes()
 
@@ -216,7 +185,6 @@ def login():
         return redirect("/dashboard")
 
     return "Invalid password"
-
 
 @app.route("/login_page")
 def login_page():
@@ -228,7 +196,6 @@ def login_page():
     <button>Login</button>
     </form>
     """
-
 
 # =========================
 # DASHBOARD
@@ -246,58 +213,23 @@ def dashboard():
     conn.close()
 
     return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-<title>Dashboard</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
-</head>
-<body>
-
-<nav class="navbar navbar-dark bg-dark px-4">
-<span class="navbar-brand">
-<i class="fa-solid fa-hospital"></i> {{ role.capitalize() }} Dashboard
-</span>
-<a href="/logout" class="btn btn-danger">Logout</a>
-</nav>
-
-<div class="container mt-4">
-
-{% if role == "technician" %}
-<a href="/add_patient_page" class="btn btn-success mb-4">
-<i class="fa-solid fa-user-plus"></i> Add Patient
-</a>
-{% endif %}
-
-<div class="row">
-{% for p in patients %}
-<div class="col-md-4">
-<div class="card shadow mb-4">
-<div class="card-body">
-<h5 class="card-title">{{ p.mrn }}</h5>
-<p><strong>Name:</strong> {{ p.name }}</p>
-
-{% if p.status == "Pending" %}
-<p>Status: <span class="badge bg-warning text-dark">Pending</span></p>
-{% else %}
-<p>Status: <span class="badge bg-success">Reviewed</span></p>
-{% endif %}
-
-<a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">
-<i class="fa-solid fa-folder-open"></i> Open Case
-</a>
-</div>
-</div>
-</div>
-{% endfor %}
-</div>
-
-</div>
-</body>
-</html>
-""", patients=patients, role=session["role"])
-
+    <h2>{{ role.capitalize() }} Dashboard</h2>
+    {% if role == "technician" %}
+        <a href="/add_patient_page">Add Patient</a><br><br>
+    {% endif %}
+    <table border="1">
+    <tr><th>MRN</th><th>Name</th><th>Status</th><th>Action</th></tr>
+    {% for p in patients %}
+    <tr>
+        <td>{{ p.mrn }}</td>
+        <td>{{ p.name }}</td>
+        <td>{{ p.status }}</td>
+        <td><a href="/view/{{ p.id }}">Open</a></td>
+    </tr>
+    {% endfor %}
+    </table>
+    <br><a href="/logout">Logout</a>
+    """, patients=patients, role=session["role"])
 
 # =========================
 # ADD PATIENT
@@ -307,71 +239,22 @@ def add_patient_page():
     if session.get("role") != "technician":
         return "Unauthorized"
 
-    return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-<title>Add Patient</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-
-<div class="container mt-4">
-<div class="card shadow p-4">
-<h4 class="mb-4">Register Patient</h4>
-
-<form method="post" action="/add_patient" enctype="multipart/form-data">
-
-<div class="row">
-<div class="col-md-6 mb-3">
-<input class="form-control" name="name" placeholder="Name" required>
-</div>
-<div class="col-md-3 mb-3">
-<input class="form-control" name="age" placeholder="Age" required>
-</div>
-<div class="col-md-3 mb-3">
-<input class="form-control" name="gender" placeholder="Gender" required>
-</div>
-</div>
-
-<input class="form-control mb-3" name="contact" placeholder="Contact" required>
-
-<h5 class="mt-4 mb-3">Vital Parameters</h5>
-
-<div class="row">
-<div class="col-md-4 mb-3">
-<input class="form-control" name="bp" placeholder="Blood Pressure (BP)">
-</div>
-<div class="col-md-4 mb-3">
-<input class="form-control" name="hr" placeholder="Heart Rate (HR)">
-</div>
-<div class="col-md-4 mb-3">
-<input class="form-control" name="temperature" placeholder="Temperature">
-</div>
-</div>
-
-<div class="row">
-<div class="col-md-4 mb-3">
-<input class="form-control" name="spo2" placeholder="SPO2">
-</div>
-<div class="col-md-4 mb-3">
-<input class="form-control" name="rr" placeholder="Respiratory Rate (RR)">
-</div>
-</div>
-
-<h5 class="mt-4">Upload Imaging Study</h5>
-<input type="file" class="form-control mb-3" name="file">
-
-<button class="btn btn-primary">Add Patient</button>
-<a href="/dashboard" class="btn btn-secondary">Back</a>
-
-</form>
-</div>
-</div>
-
-</body>
-</html>
-""")
+    return """
+    <h2>Add Patient</h2>
+    <form method="post" action="/add_patient" enctype="multipart/form-data">
+    Name: <input name="name"><br><br>
+    Age: <input name="age"><br><br>
+    Gender: <input name="gender"><br><br>
+    Contact: <input name="contact"><br><br>
+    BP: <input name="bp"><br><br>
+    HR: <input name="hr"><br><br>
+    Temp: <input name="temperature"><br><br>
+    SPO2: <input name="spo2"><br><br>
+    RR: <input name="rr"><br><br>
+    Upload Image: <input type="file" name="file"><br><br>
+    <button>Add</button>
+    </form>
+    """
 
 @app.route("/add_patient", methods=["POST"])
 def add_patient():
@@ -388,29 +271,28 @@ def add_patient():
         INSERT INTO patients
         (fhir_id,identifier_system,mrn,name,age,gender,contact,
          bp,hr,temperature,spo2,rr,status,report)
-         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-         RETURNING id
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        RETURNING id
     """,
-   (fhir_id, "hospital", mrn,
-    request.form["name"],
-    request.form["age"],
-    request.form["gender"],
-    request.form["contact"],
-    request.form["bp"],
-    request.form["hr"],
-    request.form["temperature"],
-    request.form["spo2"],
-    request.form["rr"],
-    "Pending", "")))
+    (fhir_id, "hospital", mrn,
+     request.form["name"],
+     request.form["age"],
+     request.form["gender"],
+     request.form["contact"],
+     request.form["bp"],
+     request.form["hr"],
+     request.form["temperature"],
+     request.form["spo2"],
+     request.form["rr"],
+     "Pending", ""))
 
     patient_id = cur.fetchone()["id"]
     conn.commit()
 
     if "file" in request.files:
         file = request.files["file"]
-        if file and allowed_file(file.filename):
+        if file and file.filename != "":
             image_binary = file.read()
-
             cur.execute("""
                 INSERT INTO studies (patient_id, file_name, image_data)
                 VALUES (%s,%s,%s)
@@ -419,9 +301,24 @@ def add_patient():
 
     cur.close()
     conn.close()
-
     return redirect("/dashboard")
 
+# =========================
+# IMAGE ROUTE (IMPORTANT)
+# =========================
+@app.route("/image/<int:patient_id>")
+def get_image(patient_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT image_data FROM studies WHERE patient_id=%s", (patient_id,))
+    study = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if study and study["image_data"]:
+        return study["image_data"], 200, {"Content-Type": "image/jpeg"}
+
+    return "No Image", 404
 
 # =========================
 # VIEW PATIENT
@@ -442,19 +339,13 @@ def view_patient(patient_id):
     cur.execute("SELECT * FROM patients WHERE id=%s", (patient_id,))
     patient = cur.fetchone()
 
-    cur.execute("SELECT * FROM studies WHERE patient_id=%s", (patient_id,))
-    study = cur.fetchone()
-
     cur.close()
     conn.close()
 
     return render_template_string("""
     <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
     <p>Status: {{ patient.status }}</p>
-
-    {% if study %}
-        <img src="/uploads/{{ study.file_name }}" width="400"><br><br>
-    {% endif %}
+    <img src="/image/{{ patient.id }}" width="400"><br><br>
 
     {% if role == 'radiologist' %}
     <form method="post">
@@ -462,15 +353,8 @@ def view_patient(patient_id):
     <button>Submit Report</button>
     </form>
     {% endif %}
-
     <br><a href="/dashboard">Back</a>
-    """, patient=patient, study=study, role=session["role"])
-
-
-@app.route("/uploads/<filename>")
-def uploaded_file(filename):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
-
+    """, patient=patient, role=session["role"])
 
 @app.route("/logout")
 def logout():
