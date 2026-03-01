@@ -4,9 +4,9 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# ==============================
+# ========================
 # APP CONFIG
-# ==============================
+# ========================
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
@@ -14,18 +14,18 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL is not set!")
 
-# ==============================
-# DATABASE CONNECTION FUNCTION
-# ==============================
+# ========================
+# DATABASE CONNECTION
+# ========================
 def get_db_connection():
     return psycopg2.connect(
         DATABASE_URL,
         cursor_factory=RealDictCursor
     )
 
-# ==============================
-# CREATE TABLES FUNCTION
-# ==============================
+# ========================
+# CREATE TABLES
+# ========================
 def create_tables():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -58,14 +58,11 @@ def create_tables():
     cur.close()
     conn.close()
 
-# ==============================
-# RUN TABLE CREATION
-# ==============================
 create_tables()
 
-# ==============================
-# ROUTES
-# ==============================
+# ========================
+# HOME
+# ========================
 @app.route('/')
 def home():
     return '''
@@ -74,27 +71,34 @@ def home():
     <a href="/register">Register</a>
     '''
 
+# ========================
+# REGISTER
+# ========================
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        hashed = bcrypt.hashpw(
-            request.form['password'].encode(),
-            bcrypt.gensalt()
-        )
+        try:
+            hashed = bcrypt.hashpw(
+                request.form['password'].encode(),
+                bcrypt.gensalt()
+            )
 
-        conn = get_db_connection()
-        cur = conn.cursor()
+            conn = get_db_connection()
+            cur = conn.cursor()
 
-        cur.execute(
-            "INSERT INTO users (username,password,role) VALUES (%s,%s,%s)",
-            (request.form['username'], hashed, request.form['role'])
-        )
+            cur.execute(
+                "INSERT INTO users (username,password,role) VALUES (%s,%s,%s)",
+                (request.form['username'], hashed, request.form['role'])
+            )
 
-        conn.commit()
-        cur.close()
-        conn.close()
+            conn.commit()
+            cur.close()
+            conn.close()
 
-        return redirect(url_for('login'))
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            return f"Error: {e}"
 
     return '''
     <h2>Create Account</h2>
@@ -109,6 +113,9 @@ def register():
     </form>
     '''
 
+# ========================
+# LOGIN
+# ========================
 @app.route('/login', methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -126,10 +133,9 @@ def login():
         conn.close()
 
         if user:
-
             stored_password = user['password']
 
-            # 🔥 FIX FOR PostgreSQL BYTEA
+            # IMPORTANT for PostgreSQL BYTEA
             if isinstance(stored_password, memoryview):
                 stored_password = stored_password.tobytes()
 
@@ -152,6 +158,9 @@ def login():
     </form>
     '''
 
+# ========================
+# DASHBOARD
+# ========================
 @app.route('/dashboard')
 def dashboard():
     if 'username' not in session:
@@ -176,8 +185,13 @@ def dashboard():
         </tr>
         """
 
+    add_btn = ""
+    if session['role'] == "technician":
+        add_btn = '<a href="/add_patient_page">Add Patient</a><br><br>'
+
     return f"""
     <h2>{session['role'].capitalize()} Dashboard</h2>
+    {add_btn}
     <table border="1">
     <tr><th>MRN</th><th>Name</th><th>Status</th></tr>
     {rows}
@@ -186,10 +200,64 @@ def dashboard():
     <a href="/logout">Logout</a>
     """
 
+# ========================
+# ADD PATIENT
+# ========================
+@app.route('/add_patient_page')
+def add_patient_page():
+    if session.get('role') != "technician":
+        return "Unauthorized"
+
+    return '''
+    <h2>Register Patient</h2>
+    <form method="post" action="/add_patient">
+    Name: <input name="name" required><br><br>
+    Age: <input name="age" required><br><br>
+    Gender: <input name="gender" required><br><br>
+    Contact: <input name="contact" required><br><br>
+    <button>Add Patient</button>
+    </form>
+    '''
+
+@app.route('/add_patient', methods=['POST'])
+def add_patient():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) as count FROM patients")
+    count = cur.fetchone()['count'] + 1
+
+    mrn = f"MRN{count:04d}"
+    fhir_id = f"PAT{count:04d}"
+
+    cur.execute("""
+        INSERT INTO patients
+        (fhir_id,identifier_system,mrn,name,age,gender,contact,status,report)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    """,
+    (fhir_id, "hospital", mrn,
+     request.form['name'],
+     request.form['age'],
+     request.form['gender'],
+     request.form['contact'],
+     "Pending", ""))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect('/dashboard')
+
+# ========================
+# LOGOUT
+# ========================
 @app.route('/logout')
 def logout():
     session.clear()
     return redirect('/')
 
+# ========================
+# LOCAL RUN
+# ========================
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8000)
