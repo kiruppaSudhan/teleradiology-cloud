@@ -12,12 +12,14 @@ app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 # DATABASE CONNECTION
 # =========================
 def get_db_connection():
-    try:
-        return psycopg2.connect(
-            os.environ["DATABASE_URL"],
-            cursor_factory=RealDictCursor,
-            sslmode="require"
-        )
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        return None
+    return psycopg2.connect(
+        database_url,
+        cursor_factory=RealDictCursor,
+        sslmode="require"
+    )
     except Exception as e:
         print("Database connection failed:", e)
         return None
