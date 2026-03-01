@@ -112,6 +112,7 @@ def register():
 @app.route('/login', methods=["GET", "POST"])
 def login():
     if request.method == "POST":
+
         conn = get_db_connection()
         cur = conn.cursor()
 
@@ -124,13 +125,21 @@ def login():
         cur.close()
         conn.close()
 
-        if user and bcrypt.checkpw(
-            request.form['password'].encode(),
-            user['password']
-        ):
-            session['username'] = user['username']
-            session['role'] = user['role']
-            return redirect('/dashboard')
+        if user:
+
+            stored_password = user['password']
+
+            # 🔥 FIX FOR PostgreSQL BYTEA
+            if isinstance(stored_password, memoryview):
+                stored_password = stored_password.tobytes()
+
+            if bcrypt.checkpw(
+                request.form['password'].encode(),
+                stored_password
+            ):
+                session['username'] = user['username']
+                session['role'] = user['role']
+                return redirect('/dashboard')
 
         return "Invalid credentials"
 
