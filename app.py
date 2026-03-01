@@ -12,34 +12,22 @@ app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 # DATABASE CONNECTION
 # =========================
 def get_db_connection():
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise Exception("DATABASE_URL not set")
     return psycopg2.connect(
-        os.environ["DATABASE_URL"],
+        database_url,
         cursor_factory=RealDictCursor,
         sslmode="require"
     )
 
 
 # =========================
-# HOME
+# HOME (Render health check safe)
 # =========================
 @app.route("/")
 def home():
-    return render_template_string("""
-    <html>
-    <head>
-    <title>Tele-Radiology</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
-    <body class="bg-dark text-center text-white d-flex justify-content-center align-items-center" style="height:100vh;">
-        <div>
-            <h1>Tele-Radiology System</h1>
-            <br>
-            <a href="/login_page" class="btn btn-primary btn-lg m-2">Login</a>
-            <a href="/register" class="btn btn-success btn-lg m-2">Register</a>
-        </div>
-    </body>
-    </html>
-    """)
+    return "Tele-Radiology System is Running ✅"
 
 
 # =========================
@@ -69,17 +57,11 @@ def init_db():
         age VARCHAR(10),
         gender VARCHAR(20),
         contact VARCHAR(100),
-        bp VARCHAR(20),
-        hr VARCHAR(20),
-        temperature VARCHAR(20),
-        spo2 VARCHAR(20),
-        rr VARCHAR(20),
         status VARCHAR(50),
         report TEXT
     );
     """)
 
-    # ✅ ONLY ONE STUDIES TABLE
     cur.execute("""
     CREATE TABLE IF NOT EXISTS studies (
         id SERIAL PRIMARY KEY,
@@ -141,7 +123,7 @@ def register():
 
 
 # =========================
-# LOGIN PAGE
+# LOGIN
 # =========================
 @app.route("/login_page")
 def login_page():
@@ -155,9 +137,6 @@ def login_page():
     """
 
 
-# =========================
-# LOGIN
-# =========================
 @app.route("/login", methods=["POST"])
 def login():
     conn = get_db_connection()
@@ -174,7 +153,6 @@ def login():
         return "User not found"
 
     stored_password = user["password"]
-
     if isinstance(stored_password, memoryview):
         stored_password = stored_password.tobytes()
 
@@ -182,8 +160,8 @@ def login():
         session["username"] = user["username"]
         session["role"] = user["role"]
         return redirect("/dashboard")
-    else:
-        return "Invalid password"
+
+    return "Invalid password"
 
 
 # =========================
@@ -229,7 +207,7 @@ def dashboard():
 
 
 # =========================
-# ADD PATIENT PAGE
+# ADD PATIENT
 # =========================
 @app.route("/add_patient_page")
 def add_patient_page():
@@ -249,9 +227,6 @@ def add_patient_page():
     """
 
 
-# =========================
-# ADD PATIENT
-# =========================
 @app.route("/add_patient", methods=["POST"])
 def add_patient():
     conn = get_db_connection()
@@ -279,12 +254,10 @@ def add_patient():
     patient_id = cur.fetchone()["id"]
     conn.commit()
 
-    # ✅ Store image in database
     if "file" in request.files:
         file = request.files["file"]
         if file and file.filename != "":
             image_binary = file.read()
-
             cur.execute("""
                 INSERT INTO studies (patient_id, file_name, image_data)
                 VALUES (%s,%s,%s)
@@ -298,7 +271,7 @@ def add_patient():
 
 
 # =========================
-# SERVE IMAGE FROM DATABASE
+# IMAGE ROUTE
 # =========================
 @app.route("/image/<int:patient_id>")
 def get_image(patient_id):
@@ -340,7 +313,6 @@ def view_patient(patient_id):
     return render_template_string("""
     <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
     <p>Status: {{ patient.status }}</p>
-
     <img src="/image/{{ patient.id }}" width="400"><br><br>
 
     {% if role == 'radiologist' %}
@@ -361,3 +333,8 @@ def view_patient(patient_id):
 def logout():
     session.clear()
     return redirect("/")
+
+
+# IMPORTANT FOR LOCAL TESTING
+if __name__ == "__main__":
+    app.run(debug=True)
