@@ -33,6 +33,51 @@ if not DATABASE_URL:
 conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 cursor = conn.cursor()
 
+def create_tables():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password BYTEA NOT NULL,
+        role VARCHAR(50) NOT NULL
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS patients (
+        id SERIAL PRIMARY KEY,
+        fhir_id VARCHAR(100),
+        identifier_system VARCHAR(100),
+        mrn VARCHAR(100),
+        name VARCHAR(100),
+        age VARCHAR(10),
+        gender VARCHAR(20),
+        contact VARCHAR(100),
+        bp VARCHAR(20),
+        hr VARCHAR(20),
+        temperature VARCHAR(20),
+        spo2 VARCHAR(20),
+        rr VARCHAR(20),
+        status VARCHAR(50),
+        report TEXT
+    );
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS studies (
+        id SERIAL PRIMARY KEY,
+        patient_id INTEGER REFERENCES patients(id) ON DELETE CASCADE,
+        file_name VARCHAR(255)
+    );
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
 # ========================
 # HOME
 # ========================
@@ -198,5 +243,6 @@ def logout():
 # ========================
 # RUN
 # ========================
+create_tables()
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8000)
