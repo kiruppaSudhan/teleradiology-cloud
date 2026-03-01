@@ -92,8 +92,8 @@ def home():
 # ========================
 # REGISTER
 # ========================
-@app.route('/register_page')
-def register_page():
+@app.route("/register", methods=["GET", "POST"])
+def register():
     return '''
     <h2>Create Account</h2>
     <form method="post" action="/register">
