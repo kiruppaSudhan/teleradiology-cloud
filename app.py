@@ -226,15 +226,21 @@ def login():
     cur.close()
     conn.close()
 
-    if user and bcrypt.checkpw(
-        request.form['password'].encode(),
-        user['password']
-    ):
+    if not user:
+        return "User not found"
+
+    stored_password = user['password']
+
+    # 🔥 FIX FOR memoryview
+    if isinstance(stored_password, memoryview):
+        stored_password = stored_password.tobytes()
+
+    if bcrypt.checkpw(request.form['password'].encode(), stored_password):
         session['username'] = user['username']
         session['role'] = user['role']
         return redirect('/dashboard')
-
-    return "Invalid Credentials"
+    else:
+        return "Invalid password"
 
 # =========================
 # DASHBOARD
