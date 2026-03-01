@@ -98,13 +98,12 @@ body {
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
-
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(100) UNIQUE NOT NULL,
-        password BYTEA NOT NULL,
-        role VARCHAR(50) NOT NULL
+    CREATE TABLE IF NOT EXISTS studies (
+    id SERIAL PRIMARY KEY,
+    patient_id INTEGER REFERENCES patients(id) ON DELETE CASCADE,
+    file_name VARCHAR(255),
+    image_data BYTEA
     );
     """)
 
@@ -442,17 +441,16 @@ def add_patient():
 
     # File upload
     if "file" in request.files:
-        file = request.files["file"]
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-            file.save(filepath)
+    file = request.files["file"]
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        image_binary = file.read()
 
-            cur.execute("""
-                INSERT INTO studies (patient_id, file_name)
-                VALUES (%s,%s)
-            """, (patient_id, filename))
-            conn.commit()
+        cur.execute("""
+            INSERT INTO studies (patient_id, file_name, image_data)
+            VALUES (%s,%s,%s)
+        """, (patient_id, filename, psycopg2.Binary(image_binary)))
+        conn.commit()
 
     cur.close()
     conn.close()
