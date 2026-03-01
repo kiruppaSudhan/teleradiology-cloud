@@ -439,19 +439,18 @@ def add_patient():
     patient_id = cur.fetchone()["id"]
     conn.commit()
 
-    # File upload
-    if "file" in request.files:
-    file = request.files["file"]
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        image_binary = file.read()
+   # File upload
+   if "file" in request.files:
+       file = request.files["file"]
+       if file and allowed_file(file.filename):
+           filename = secure_filename(file.filename)
+           image_binary = file.read()
 
-        cur.execute("""
+           cur.execute("""
             INSERT INTO studies (patient_id, file_name, image_data)
             VALUES (%s,%s,%s)
-        """, (patient_id, filename, psycopg2.Binary(image_binary)))
-        conn.commit()
-
+           """, (patient_id, filename, psycopg2.Binary(image_binary)))
+           conn.commit()
     cur.close()
     conn.close()
 
