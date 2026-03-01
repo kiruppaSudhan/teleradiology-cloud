@@ -1,3 +1,4 @@
+from flask import render_template_string
 from flask import Flask, request, redirect, url_for, session, send_from_directory
 import bcrypt
 import os
@@ -40,11 +41,54 @@ def get_db_connection():
 # =========================
 @app.route("/")
 def home():
-    return """
-    <h1>Tele-Radiology System</h1>
-    <a href="/login_page">Login</a> |
-    <a href="/register">Register</a>
-    """
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<title>Tele-Radiology System</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+
+<style>
+body {
+    background: url('https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1600&q=80') no-repeat center center fixed;
+    background-size: cover;
+}
+
+.overlay {
+    background-color: rgba(0,0,0,0.6);
+    height: 100vh;
+}
+
+.center-box {
+    background: white;
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0 0 25px rgba(0,0,0,0.4);
+}
+</style>
+</head>
+
+<body>
+<div class="overlay d-flex justify-content-center align-items-center">
+
+<div class="center-box text-center">
+<h2 class="mb-4"><i class="fa-solid fa-x-ray"></i> Tele-Radiology System</h2>
+
+<a href="/login_page" class="btn btn-primary btn-lg m-2">
+<i class="fa-solid fa-right-to-bracket"></i> Login
+</a>
+
+<a href="/register" class="btn btn-success btn-lg m-2">
+<i class="fa-solid fa-user-plus"></i> Register
+</a>
+
+</div>
+</div>
+</body>
+</html>
+""")
 
 
 # =========================
@@ -121,6 +165,8 @@ def register():
             conn.commit()
         except psycopg2.errors.UniqueViolation:
             conn.rollback()
+            cur.close()
+            conn.close()
             return "Username already exists"
 
         cur.close()
@@ -128,18 +174,35 @@ def register():
 
         return redirect("/login_page")
 
-    return """
-    <h2>Create Account</h2>
-    <form method="post">
-    Username: <input name="username" required><br><br>
-    Password: <input type="password" name="password" required><br><br>
-    <select name="role">
-        <option value="technician">Technician</option>
-        <option value="radiologist">Radiologist</option>
-    </select><br><br>
-    <button>Register</button>
-    </form>
-    """
+    # ✅ GET request (this must align properly)
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<title>Register</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex justify-content-center align-items-center" style="height:100vh;">
+
+<div class="card p-4 shadow" style="width:400px;">
+<h4 class="text-center mb-3">Create Account</h4>
+
+<form method="post">
+<input class="form-control mb-3" name="username" placeholder="Username" required>
+<input type="password" class="form-control mb-3" name="password" placeholder="Password" required>
+
+<select class="form-control mb-3" name="role">
+<option value="technician">Technician</option>
+<option value="radiologist">Radiologist</option>
+</select>
+
+<button class="btn btn-success w-100">Register</button>
+</form>
+</div>
+
+</body>
+</html>
+""")
 
 
 # =========================
@@ -147,15 +210,35 @@ def register():
 # =========================
 @app.route("/login_page")
 def login_page():
-    return """
-    <h2>Login</h2>
-    <form method="post" action="/login">
-    Username: <input name="username" required><br><br>
-    Password: <input type="password" name="password" required><br><br>
-    <button>Login</button>
-    </form>
-    """
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<title>Login</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+body {
+    background: linear-gradient(to right, #1f4037, #99f2c8);
+    height: 100vh;
+}
+</style>
+</head>
+<body class="d-flex justify-content-center align-items-center">
 
+<div class="card p-4 shadow-lg" style="width:400px;">
+<h4 class="text-center mb-3">Login</h4>
+
+<form method="post" action="/login">
+<input class="form-control mb-3" name="username" placeholder="Username" required>
+<input type="password" class="form-control mb-3" name="password" placeholder="Password" required>
+
+<button class="btn btn-dark w-100">Login</button>
+</form>
+</div>
+
+</body>
+</html>
+""")
 
 # =========================
 # LOGIN
@@ -199,37 +282,63 @@ def dashboard():
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM patients")
+    cur.execute("SELECT * FROM patients ORDER BY id DESC")
     patients = cur.fetchall()
     cur.close()
     conn.close()
 
-    rows = ""
-    for p in patients:
-        rows += f"""
-        <tr>
-        <td>{p['mrn']}</td>
-        <td>{p['name']}</td>
-        <td>{p['status']}</td>
-        <td><a href="/view/{p['id']}">Open</a></td>
-        </tr>
-        """
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<title>Dashboard</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+</head>
+<body>
 
-    add_btn = ""
-    if session["role"] == "technician":
-        add_btn = '<a href="/add_patient_page">Add Patient</a><br><br>'
+<nav class="navbar navbar-dark bg-dark px-4">
+<span class="navbar-brand">
+<i class="fa-solid fa-hospital"></i> {{ role.capitalize() }} Dashboard
+</span>
+<a href="/logout" class="btn btn-danger">Logout</a>
+</nav>
 
-    return f"""
-    <h2>{session['role'].capitalize()} Dashboard</h2>
-    {add_btn}
-    <table border="1">
-    <tr><th>MRN</th><th>Name</th><th>Status</th><th>Action</th></tr>
-    {rows}
-    </table>
-    <br>
-    <a href="/logout">Logout</a>
-    """
+<div class="container mt-4">
 
+{% if role == "technician" %}
+<a href="/add_patient_page" class="btn btn-success mb-4">
+<i class="fa-solid fa-user-plus"></i> Add Patient
+</a>
+{% endif %}
+
+<div class="row">
+{% for p in patients %}
+<div class="col-md-4">
+<div class="card shadow mb-4">
+<div class="card-body">
+<h5 class="card-title">{{ p.mrn }}</h5>
+<p><strong>Name:</strong> {{ p.name }}</p>
+
+{% if p.status == "Pending" %}
+<p>Status: <span class="badge bg-warning text-dark">Pending</span></p>
+{% else %}
+<p>Status: <span class="badge bg-success">Reviewed</span></p>
+{% endif %}
+
+<a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">
+<i class="fa-solid fa-folder-open"></i> Open Case
+</a>
+</div>
+</div>
+</div>
+{% endfor %}
+</div>
+
+</div>
+</body>
+</html>
+""", patients=patients, role=session["role"])
 
 # =========================
 # ADD PATIENT PAGE
@@ -239,22 +348,60 @@ def add_patient_page():
     if session.get("role") != "technician":
         return "Unauthorized"
 
-    return """
-    <h2>Register Patient</h2>
-    <form method="post" action="/add_patient" enctype="multipart/form-data">
-    Name: <input name="name" required><br><br>
-    Age: <input name="age" required><br><br>
-    Gender: <input name="gender" required><br><br>
-    Contact: <input name="contact" required><br><br>
-    BP: <input name="bp"><br><br>
-    HR: <input name="hr"><br><br>
-    Temperature: <input name="temperature"><br><br>
-    SPO2: <input name="spo2"><br><br>
-    RR: <input name="rr"><br><br>
-    Upload Image: <input type="file" name="file"><br><br>
-    <button>Add Patient</button>
-    </form>
-    """
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<title>Add Patient</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container mt-4">
+<div class="card shadow p-4">
+<h4 class="mb-4">Register Patient</h4>
+
+<form method="post" action="/add_patient" enctype="multipart/form-data">
+
+<div class="row">
+<div class="col-md-6 mb-3">
+<input class="form-control" name="name" placeholder="Name" required>
+</div>
+<div class="col-md-3 mb-3">
+<input class="form-control" name="age" placeholder="Age" required>
+</div>
+<div class="col-md-3 mb-3">
+<input class="form-control" name="gender" placeholder="Gender" required>
+</div>
+</div>
+
+<input class="form-control mb-3" name="contact" placeholder="Contact" required>
+
+<h6>Vitals</h6>
+
+<div class="row">
+<div class="col"><input class="form-control mb-3" name="bp" placeholder="BP"></div>
+<div class="col"><input class="form-control mb-3" name="hr" placeholder="HR"></div>
+<div class="col"><input class="form-control mb-3" name="temperature" placeholder="Temperature"></div>
+</div>
+
+<div class="row">
+<div class="col"><input class="form-control mb-3" name="spo2" placeholder="SPO2"></div>
+<div class="col"><input class="form-control mb-3" name="rr" placeholder="RR"></div>
+</div>
+
+<input type="file" class="form-control mb-3" name="file">
+
+<button class="btn btn-primary">Add Patient</button>
+<a href="/dashboard" class="btn btn-secondary">Back</a>
+
+</form>
+</div>
+</div>
+
+</body>
+</html>
+""")
 
 
 # =========================
@@ -276,6 +423,7 @@ def add_patient():
         (fhir_id,identifier_system,mrn,name,age,gender,contact,
          bp,hr,temperature,spo2,rr,status,report)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        RETURNING id
     """,
     (fhir_id, "hospital", mrn,
      request.form["name"],
@@ -289,6 +437,7 @@ def add_patient():
      request.form["rr"],
      "Pending", ""))
 
+    patient_id = cur.fetchone()["id"]
     conn.commit()
 
     # File upload
@@ -302,7 +451,7 @@ def add_patient():
             cur.execute("""
                 INSERT INTO studies (patient_id, file_name)
                 VALUES (%s,%s)
-            """, (count, filename))
+            """, (patient_id, filename))
             conn.commit()
 
     cur.close()
@@ -349,13 +498,40 @@ def view_patient(patient_id):
         </form>
         """
 
-    return f"""
-    <h2>{patient['name']} ({patient['mrn']})</h2>
-    <p>Status: {patient['status']}</p>
-    {image_html}
-    {report_form}
-    <br><a href="/dashboard">Back</a>
-    """
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+<title>Case Review</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="container mt-4">
+
+<h3>{{ patient.name }} ({{ patient.mrn }})</h3>
+<p>Status: <b>{{ patient.status }}</b></p>
+
+{% if image %}
+<img src="/uploads/{{ image }}" class="img-fluid mb-3" style="max-width:500px;">
+{% endif %}
+
+{% if role == 'radiologist' %}
+<form method="post">
+<textarea name="report" class="form-control mb-3" rows="5">{{ patient.report }}</textarea>
+<button class="btn btn-success">Submit Report</button>
+</form>
+{% endif %}
+
+<br>
+<a href="/dashboard" class="btn btn-secondary">Back</a>
+
+</div>
+</body>
+</html>
+""", patient=patient,
+   image=study["file_name"] if study else None,
+   role=session["role"])
 
 
 # =========================
