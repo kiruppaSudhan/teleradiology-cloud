@@ -479,3 +479,21 @@ def fix_db():
     finally:
         cur.close()
         conn.close()
+
+@app.route("/reset_all")
+def reset_all():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("DROP TABLE IF EXISTS studies CASCADE;")
+        cur.execute("DROP TABLE IF EXISTS patients CASCADE;")
+        cur.execute("DROP TABLE IF EXISTS users CASCADE;")
+        conn.commit()
+        return "All tables deleted successfully!"
+    except Exception as e:
+        conn.rollback()
+        return str(e)
+    finally:
+        cur.close()
+        conn.close()       
