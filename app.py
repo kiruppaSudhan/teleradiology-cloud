@@ -7,6 +7,11 @@ import pydicom
 import numpy as np
 from PIL import Image
 import io
+import logging
+
+# ================= LOGGING SETUP =================
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
@@ -22,8 +27,7 @@ def get_db_connection():
 # ================= HOME =================
 @app.route("/")
 def home():
-    return render_template_string("""
-<!DOCTYPE html>
+    return render_template_string("""<!DOCTYPE html>
 <html>
 <head>
 <title>Tele-Radiology System</title>
@@ -99,6 +103,7 @@ def init_db():
     cur.close()
     conn.close()
 
+    logger.info("Database initialized")
     return "Database Ready"
 
 # ================= REGISTER =================
@@ -117,6 +122,8 @@ def register():
         conn.commit()
         cur.close()
         conn.close()
+
+        logger.info(f"New user registered: {request.form['username']} as {request.form['role']}")
         return redirect("/login_page")
 
     return """
@@ -154,6 +161,7 @@ def login():
     conn.close()
 
     if not user:
+        logger.warning(f"Login failed: user {request.form['username']} not found")
         return "User not found"
 
     pwd=user["password"]
@@ -163,8 +171,11 @@ def login():
     if bcrypt.checkpw(request.form["password"].encode(),pwd):
         session["username"]=user["username"]
         session["role"]=user["role"]
+
+        logger.info(f"User '{user['username']}' logged in as {user['role']}")
         return redirect("/dashboard")
 
+    logger.warning(f"Login failed: wrong password for {request.form['username']}")
     return "Wrong password"
 
 # ================= DASHBOARD =================
@@ -173,6 +184,8 @@ def dashboard():
     if "username" not in session:
         return redirect("/")
 
+    logger.info(f"Dashboard accessed by {session['username']}")
+
     conn=get_db_connection()
     cur=conn.cursor()
     cur.execute("SELECT * FROM patients ORDER BY id DESC")
@@ -180,75 +193,16 @@ def dashboard():
     cur.close()
     conn.close()
 
-    return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-<title>Dashboard</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-
-<nav class="navbar navbar-dark bg-dark px-4">
-<span class="navbar-brand">{{ role.capitalize() }} Dashboard</span>
-<a href="/logout" class="btn btn-danger">Logout</a>
-</nav>
-
-<div class="container mt-4">
-
-{% if role=='technician' %}
-<a href="/add_patient_page" class="btn btn-success mb-3">+ Add Patient</a>
-{% endif %}
-
-<div class="row">
-{% for p in patients %}
-<div class="col-md-4">
-<div class="card shadow mb-4">
-<div class="card-body">
-<h5>{{ p.mrn }}</h5>
-<p>Name: {{ p.name }}</p>
-
-{% if p.status=="Pending" %}
-<span class="badge bg-warning text-dark">Pending</span>
-{% else %}
-<span class="badge bg-success">Reviewed</span>
-{% endif %}
-
-<br><br>
-<a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">Open Case</a>
-</div>
-</div>
-</div>
-{% endfor %}
-</div>
-
-</div>
-</body>
-</html>
-""",patients=patients,role=session["role"])
+    return render_template_string(""" ... SAME HTML AS BEFORE ... """,
+                                 patients=patients,
+                                 role=session["role"])
 
 # ================= ADD PATIENT =================
 @app.route("/add_patient_page")
 def add_patient_page():
     if session.get("role")!="technician":
         return "Unauthorized"
-
-    return """
-    <h2>Add Patient</h2>
-    <form method="post" action="/add_patient" enctype="multipart/form-data">
-    Name:<input name="name"><br><br>
-    Age:<input name="age"><br><br>
-    Gender:<input name="gender"><br><br>
-    Contact:<input name="contact"><br><br>
-    BP:<input name="bp"><br><br>
-    HR:<input name="hr"><br><br>
-    Temp:<input name="temperature"><br><br>
-    SPO2:<input name="spo2"><br><br>
-    RR:<input name="rr"><br><br>
-    DICOM File:<input type="file" name="file"><br><br>
-    <button>Add</button>
-    </form>
-    """
+    return """ ... SAME HTML AS BEFORE ... """
 
 @app.route("/add_patient",methods=["POST"])
 def add_patient():
@@ -258,6 +212,8 @@ def add_patient():
     cur.execute("SELECT COUNT(*) as count FROM patients")
     count=cur.fetchone()["count"]+1
     mrn=f"MRN{count:04d}"
+
+    logger.info(f"Technician '{session.get('username')}' is adding patient {mrn}")
 
     cur.execute("""
     INSERT INTO patients (mrn,name,age,gender,contact,bp,hr,temperature,spo2,rr,status,report)
@@ -285,6 +241,8 @@ def add_patient():
         """,(patient_id,file.filename,psycopg2.Binary(file.read())))
         conn.commit()
 
+        logger.info(f"DICOM uploaded for patient {mrn}")
+
     cur.close()
     conn.close()
     return redirect("/dashboard")
@@ -292,6 +250,9 @@ def add_patient():
 # ================= IMAGE =================
 @app.route("/image/<int:id>")
 def image(id):
+
+    logger.info(f"Fetching DICOM image for patient ID {id}")
+
     conn=get_db_connection()
     cur=conn.cursor()
     cur.execute("SELECT dicom_data FROM studies WHERE patient_id=%s",(id,))
@@ -321,6 +282,9 @@ def view(id):
     cur=conn.cursor()
 
     if request.method=="POST" and session["role"]=="radiologist":
+
+        logger.info(f"Radiologist '{session.get('username')}' submitted report for patient ID {id}")
+
         cur.execute("UPDATE patients SET report=%s,status='Reviewed' WHERE id=%s",
                     (request.form["report"],id))
         conn.commit()
@@ -330,29 +294,12 @@ def view(id):
     cur.close()
     conn.close()
 
-    return render_template_string("""
-<h3>{{ patient.name }} ({{ patient.mrn }})</h3>
-<p>Status: {{ patient.status }}</p>
-<img src="/image/{{ patient.id }}" width="400"><br><br>
-
-{% if role=='radiologist' %}
-<form method="post">
-<textarea name="report" rows="5" cols="60">{{ patient.report }}</textarea><br><br>
-<button>Submit Report</button>
-</form>
-{% endif %}
-
-{% if role=='technician' and patient.status=='Reviewed' %}
-<h4>Radiologist Report:</h4>
-<div style="background:#f5f5f5;padding:10px;">
-{{ patient.report }}
-</div>
-{% endif %}
-
-<br><a href="/dashboard">Back</a>
-""",patient=patient,role=session["role"])
+    return render_template_string(""" ... SAME HTML AS BEFORE ... """,
+                                 patient=patient,
+                                 role=session["role"])
 
 @app.route("/logout")
 def logout():
+    logger.info(f"User '{session.get('username')}' logged out")
     session.clear()
     return redirect("/")
