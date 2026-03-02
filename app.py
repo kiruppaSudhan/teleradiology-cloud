@@ -3,6 +3,10 @@ import bcrypt
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import io
+import pydicom
+import numpy as np
+from PIL import Image
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
@@ -23,44 +27,20 @@ def get_db_connection():
 @app.route("/")
 def home():
     return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-<title>Tele-Radiology System</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
-<style>
-body {
-    background: url('https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1600&q=80') no-repeat center center fixed;
-    background-size: cover;
-}
-.overlay {
-    background-color: rgba(0,0,0,0.6);
-    height: 100vh;
-}
-.center-box {
-    background: white;
-    padding: 40px;
-    border-radius: 15px;
-    box-shadow: 0 0 25px rgba(0,0,0,0.4);
-}
-</style>
-</head>
-<body>
-<div class="overlay d-flex justify-content-center align-items-center">
-<div class="center-box text-center">
-<h2 class="mb-4"><i class="fa-solid fa-x-ray"></i> Tele-Radiology System</h2>
-<a href="/login_page" class="btn btn-primary btn-lg m-2">
-<i class="fa-solid fa-right-to-bracket"></i> Login
-</a>
-<a href="/register" class="btn btn-success btn-lg m-2">
-<i class="fa-solid fa-user-plus"></i> Register
-</a>
-</div>
-</div>
-</body>
-</html>
-""")
+    <html>
+    <head>
+    <title>Tele-Radiology System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+    <body class="bg-dark text-center text-white d-flex align-items-center justify-content-center" style="height:100vh;">
+        <div>
+            <h1>Tele-Radiology System</h1>
+            <a href="/login_page" class="btn btn-primary m-2">Login</a>
+            <a href="/register" class="btn btn-success m-2">Register</a>
+        </div>
+    </body>
+    </html>
+    """)
 
 # =========================
 # INIT DATABASE
@@ -104,7 +84,7 @@ def init_db():
         id SERIAL PRIMARY KEY,
         patient_id INTEGER REFERENCES patients(id) ON DELETE CASCADE,
         file_name VARCHAR(255),
-        image_data BYTEA
+        dicom_data BYTEA NOT NULL
     );
     """)
 
@@ -136,8 +116,6 @@ def register():
             conn.commit()
         except psycopg2.errors.UniqueViolation:
             conn.rollback()
-            cur.close()
-            conn.close()
             return "Username already exists"
 
         cur.close()
@@ -200,9 +178,6 @@ def login_page():
 # =========================
 # DASHBOARD
 # =========================
-# =========================
-# DASHBOARD (PROFESSIONAL UI RESTORED)
-# =========================
 @app.route("/dashboard")
 def dashboard():
     if "username" not in session:
@@ -216,65 +191,24 @@ def dashboard():
     conn.close()
 
     return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-<title>Dashboard</title>
+    <h2>{{ role.capitalize() }} Dashboard</h2>
+    {% if role == "technician" %}
+    <a href="/add_patient_page">Add Patient</a><br><br>
+    {% endif %}
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
-
-</head>
-<body class="bg-light">
-
-<nav class="navbar navbar-dark bg-dark px-4">
-<span class="navbar-brand">
-<i class="fa-solid fa-hospital"></i> {{ role.capitalize() }} Dashboard
-</span>
-<a href="/logout" class="btn btn-danger">Logout</a>
-</nav>
-
-<div class="container mt-4">
-
-{% if role == "technician" %}
-<a href="/add_patient_page" class="btn btn-success mb-4">
-<i class="fa-solid fa-user-plus"></i> Add Patient
-</a>
-{% endif %}
-
-<div class="row">
-{% for p in patients %}
-<div class="col-md-6 col-lg-4">
-<div class="card shadow-sm mb-4 border-0">
-<div class="card-body">
-
-<h5 class="card-title">{{ p.mrn }}</h5>
-<p><strong>Name:</strong> {{ p.name }}</p>
-
-{% if p.status == "Pending" %}
-<p>Status:
-<span class="badge bg-warning text-dark">Pending</span>
-</p>
-{% else %}
-<p>Status:
-<span class="badge bg-success">Reviewed</span>
-</p>
-{% endif %}
-
-<a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">
-<i class="fa-solid fa-folder-open"></i> Open Case
-</a>
-
-</div>
-</div>
-</div>
-{% endfor %}
-</div>
-
-</div>
-</body>
-</html>
-""", patients=patients, role=session["role"])
+    <table border="1">
+    <tr><th>MRN</th><th>Name</th><th>Status</th><th>Open</th></tr>
+    {% for p in patients %}
+    <tr>
+        <td>{{ p.mrn }}</td>
+        <td>{{ p.name }}</td>
+        <td>{{ p.status }}</td>
+        <td><a href="/view/{{ p.id }}">Open</a></td>
+    </tr>
+    {% endfor %}
+    </table>
+    <br><a href="/logout">Logout</a>
+    """, patients=patients, role=session["role"])
 
 # =========================
 # ADD PATIENT
@@ -283,73 +217,86 @@ def dashboard():
 def add_patient_page():
     if session.get("role") != "technician":
         return "Unauthorized"
-
     return """
     <h2>Add Patient</h2>
     <form method="post" action="/add_patient" enctype="multipart/form-data">
-    Name: <input name="name"><br><br>
-    Age: <input name="age"><br><br>
-    Gender: <input name="gender"><br><br>
-    Contact: <input name="contact"><br><br>
-    BP: <input name="bp"><br><br>
-    HR: <input name="hr"><br><br>
-    Temp: <input name="temperature"><br><br>
-    SPO2: <input name="spo2"><br><br>
-    RR: <input name="rr"><br><br>
-    Upload Image: <input type="file" name="file"><br><br>
+    Name: <input name="name"><br>
+    Age: <input name="age"><br>
+    Gender: <input name="gender"><br>
+    Contact: <input name="contact"><br>
+    BP: <input name="bp"><br>
+    HR: <input name="hr"><br>
+    Temp: <input name="temperature"><br>
+    SPO2: <input name="spo2"><br>
+    RR: <input name="rr"><br>
+    DICOM File: <input type="file" name="file"><br><br>
     <button>Add</button>
     </form>
     """
 
 @app.route("/add_patient", methods=["POST"])
 def add_patient():
+    if session.get("role") != "technician":
+        return "Unauthorized"
+
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) as count FROM patients")
-    count = cur.fetchone()["count"] + 1
+    try:
+        cur.execute("SELECT COUNT(*) as count FROM patients")
+        count = cur.fetchone()["count"] + 1
 
-    mrn = f"MRN{count:04d}"
-    fhir_id = f"PAT{count:04d}"
+        mrn = f"MRN{count:04d}"
+        fhir_id = f"PAT{count:04d}"
 
-    cur.execute("""
+        cur.execute("""
         INSERT INTO patients
         (fhir_id,identifier_system,mrn,name,age,gender,contact,
          bp,hr,temperature,spo2,rr,status,report)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
-    """,
-    (fhir_id, "hospital", mrn,
-     request.form["name"],
-     request.form["age"],
-     request.form["gender"],
-     request.form["contact"],
-     request.form["bp"],
-     request.form["hr"],
-     request.form["temperature"],
-     request.form["spo2"],
-     request.form["rr"],
-     "Pending", ""))
+        """,
+        (fhir_id, "hospital", mrn,
+         request.form["name"],
+         request.form["age"],
+         request.form["gender"],
+         request.form["contact"],
+         request.form["bp"],
+         request.form["hr"],
+         request.form["temperature"],
+         request.form["spo2"],
+         request.form["rr"],
+         "Pending", ""))
 
-    patient_id = cur.fetchone()["id"]
-    conn.commit()
+        patient_id = cur.fetchone()["id"]
+        conn.commit()
 
-    if "file" in request.files:
-        file = request.files["file"]
-        if file and file.filename != "":
-            image_binary = file.read()
-            cur.execute("""
-                INSERT INTO studies (patient_id, file_name, image_data)
-                VALUES (%s,%s,%s)
-            """, (patient_id, file.filename, psycopg2.Binary(image_binary)))
-            conn.commit()
+        file = request.files.get("file")
+        if not file:
+            return "No file uploaded"
 
-    cur.close()
-    conn.close()
+        dicom_binary = file.read()
+
+        cur.execute("""
+        INSERT INTO studies (patient_id, file_name, dicom_data)
+        VALUES (%s,%s,%s)
+        """, (patient_id, file.filename,
+              psycopg2.Binary(dicom_binary)))
+
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        return str(e)
+
+    finally:
+        cur.close()
+        conn.close()
+
     return redirect("/dashboard")
 
 # =========================
-# IMAGE ROUTE (IMPORTANT)
+# IMAGE ROUTE
 # =========================
 @app.route("/image/<int:patient_id>")
 def get_image(patient_id):
@@ -360,69 +307,51 @@ def get_image(patient_id):
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT dicom_data
-        FROM studies
-        WHERE patient_id=%s
-    """, (patient_id,))
-
+    cur.execute("SELECT dicom_data FROM studies WHERE patient_id=%s",
+                (patient_id,))
     study = cur.fetchone()
+
     cur.close()
     conn.close()
 
     if not study:
-        return "No Study Found", 404
+        return "No Study Found"
 
     dicom_bytes = study["dicom_data"]
-
     if isinstance(dicom_bytes, memoryview):
         dicom_bytes = dicom_bytes.tobytes()
 
-    try:
-        ds = pydicom.dcmread(io.BytesIO(dicom_bytes))
+    ds = pydicom.dcmread(io.BytesIO(dicom_bytes))
+    pixel_array = ds.pixel_array.astype(float)
 
-        # Handle multi-frame
-        if hasattr(ds, "NumberOfFrames") and ds.NumberOfFrames > 1:
-            pixel_array = ds.pixel_array[0]
-        else:
-            pixel_array = ds.pixel_array
+    scaled = (pixel_array - pixel_array.min()) / \
+             (pixel_array.max() - pixel_array.min())
+    scaled = (scaled * 255).astype(np.uint8)
 
-        pixel_array = pixel_array.astype(float)
+    image = Image.fromarray(scaled)
+    img_io = io.BytesIO()
+    image.save(img_io, format="PNG")
+    img_io.seek(0)
 
-        # Prevent division by zero
-        if pixel_array.max() == pixel_array.min():
-            scaled = np.zeros(pixel_array.shape, dtype=np.uint8)
-        else:
-            scaled = (pixel_array - pixel_array.min()) / \
-                     (pixel_array.max() - pixel_array.min())
-            scaled = (scaled * 255).astype(np.uint8)
-
-        image = Image.fromarray(scaled)
-
-        img_io = io.BytesIO()
-        image.save(img_io, format="PNG")
-        img_io.seek(0)
-
-        return img_io.read(), 200, {
-            "Content-Type": "image/png"
-        }
-
-    except Exception as e:
-        return f"DICOM Error: {str(e)}", 500
+    return img_io.read(), 200, {"Content-Type": "image/png"}
 
 # =========================
 # VIEW PATIENT
 # =========================
 @app.route("/view/<int:patient_id>", methods=["GET", "POST"])
 def view_patient(patient_id):
+
+    if "username" not in session:
+        return redirect("/")
+
     conn = get_db_connection()
     cur = conn.cursor()
 
     if request.method == "POST" and session["role"] == "radiologist":
         cur.execute("""
-            UPDATE patients
-            SET report=%s, status='Reviewed'
-            WHERE id=%s
+        UPDATE patients
+        SET report=%s, status='Reviewed'
+        WHERE id=%s
         """, (request.form["report"], patient_id))
         conn.commit()
 
@@ -439,10 +368,11 @@ def view_patient(patient_id):
 
     {% if role == 'radiologist' %}
     <form method="post">
-    <textarea name="report" rows="5" cols="50">{{ patient.report }}</textarea><br><br>
+    <textarea name="report" rows="5" cols="50">{{ patient.report }}</textarea><br>
     <button>Submit Report</button>
     </form>
     {% endif %}
+
     <br><a href="/dashboard">Back</a>
     """, patient=patient, role=session["role"])
 
@@ -450,35 +380,6 @@ def view_patient(patient_id):
 def logout():
     session.clear()
     return redirect("/")
-@app.route("/fix_db")
-def fix_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    try:
-        # Drop old studies table
-        cur.execute("DROP TABLE IF EXISTS studies;")
-
-        # Create new studies table
-        cur.execute("""
-        CREATE TABLE studies (
-            id SERIAL PRIMARY KEY,
-            patient_id INTEGER REFERENCES patients(id) ON DELETE CASCADE,
-            file_name VARCHAR(255),
-            dicom_data BYTEA NOT NULL
-        );
-        """)
-
-        conn.commit()
-        return "Studies table recreated successfully!"
-
-    except Exception as e:
-        conn.rollback()
-        return f"Error: {str(e)}"
-
-    finally:
-        cur.close()
-        conn.close()
 
 @app.route("/reset_all")
 def reset_all():
@@ -496,4 +397,4 @@ def reset_all():
         return str(e)
     finally:
         cur.close()
-        conn.close()       
+        conn.close()
