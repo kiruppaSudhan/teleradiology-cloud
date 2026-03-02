@@ -353,17 +353,62 @@ def add_patient():
 # =========================
 @app.route("/image/<int:patient_id>")
 def get_image(patient_id):
+
+    if "username" not in session:
+        return redirect("/")
+
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT image_data FROM studies WHERE patient_id=%s", (patient_id,))
+
+    cur.execute("""
+        SELECT dicom_data
+        FROM studies
+        WHERE patient_id=%s
+    """, (patient_id,))
+
     study = cur.fetchone()
     cur.close()
     conn.close()
 
-    if study and study["image_data"]:
-        return study["image_data"], 200, {"Content-Type": "image/jpeg"}
+    if not study:
+        return "No Study Found", 404
 
-    return "No Image", 404
+    dicom_bytes = study["dicom_data"]
+
+    if isinstance(dicom_bytes, memoryview):
+        dicom_bytes = dicom_bytes.tobytes()
+
+    try:
+        ds = pydicom.dcmread(io.BytesIO(dicom_bytes))
+
+        # Handle multi-frame
+        if hasattr(ds, "NumberOfFrames") and ds.NumberOfFrames > 1:
+            pixel_array = ds.pixel_array[0]
+        else:
+            pixel_array = ds.pixel_array
+
+        pixel_array = pixel_array.astype(float)
+
+        # Prevent division by zero
+        if pixel_array.max() == pixel_array.min():
+            scaled = np.zeros(pixel_array.shape, dtype=np.uint8)
+        else:
+            scaled = (pixel_array - pixel_array.min()) / \
+                     (pixel_array.max() - pixel_array.min())
+            scaled = (scaled * 255).astype(np.uint8)
+
+        image = Image.fromarray(scaled)
+
+        img_io = io.BytesIO()
+        image.save(img_io, format="PNG")
+        img_io.seek(0)
+
+        return img_io.read(), 200, {
+            "Content-Type": "image/png"
+        }
+
+    except Exception as e:
+        return f"DICOM Error: {str(e)}", 500
 
 # =========================
 # VIEW PATIENT
