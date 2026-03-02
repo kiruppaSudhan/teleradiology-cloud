@@ -171,81 +171,11 @@ def login():
     if bcrypt.checkpw(request.form["password"].encode(),pwd):
         session["username"]=user["username"]
         session["role"]=user["role"]
-
         logger.info(f"User '{user['username']}' logged in as {user['role']}")
         return redirect("/dashboard")
 
     logger.warning(f"Login failed: wrong password for {request.form['username']}")
     return "Wrong password"
-
-# ================= DASHBOARD =================
-@app.route("/dashboard")
-def dashboard():
-    if "username" not in session:
-        return redirect("/")
-
-    logger.info(f"Dashboard accessed by {session['username']}")
-
-    conn=get_db_connection()
-    cur=conn.cursor()
-    cur.execute("SELECT * FROM patients ORDER BY id DESC")
-    patients=cur.fetchall()
-    cur.close()
-    conn.close()
-
-    return render_template_string(""" ... SAME HTML AS BEFORE ... """,
-                                 patients=patients,
-                                 role=session["role"])
-
-# ================= ADD PATIENT =================
-@app.route("/add_patient_page")
-def add_patient_page():
-    if session.get("role")!="technician":
-        return "Unauthorized"
-    return """ ... SAME HTML AS BEFORE ... """
-
-@app.route("/add_patient",methods=["POST"])
-def add_patient():
-    conn=get_db_connection()
-    cur=conn.cursor()
-
-    cur.execute("SELECT COUNT(*) as count FROM patients")
-    count=cur.fetchone()["count"]+1
-    mrn=f"MRN{count:04d}"
-
-    logger.info(f"Technician '{session.get('username')}' is adding patient {mrn}")
-
-    cur.execute("""
-    INSERT INTO patients (mrn,name,age,gender,contact,bp,hr,temperature,spo2,rr,status,report)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Pending','')
-    RETURNING id
-    """,(mrn,
-         request.form["name"],
-         request.form["age"],
-         request.form["gender"],
-         request.form["contact"],
-         request.form["bp"],
-         request.form["hr"],
-         request.form["temperature"],
-         request.form["spo2"],
-         request.form["rr"]))
-
-    patient_id=cur.fetchone()["id"]
-    conn.commit()
-
-    file=request.files["file"]
-    if file:
-        cur.execute("""
-        INSERT INTO studies (patient_id,file_name,dicom_data)
-        VALUES (%s,%s,%s)
-        """,(patient_id,file.filename,psycopg2.Binary(file.read())))
-        conn.commit()
-
-        logger.info(f"DICOM uploaded for patient {mrn}")
-
-    cur.close()
-    conn.close()
-    return redirect("/dashboard")
 
 # ================= IMAGE =================
 @app.route("/image/<int:id>")
@@ -260,20 +190,36 @@ def image(id):
     cur.close()
     conn.close()
 
+    if not study:
+        return "No image found", 404
+
     dicom_bytes=study["dicom_data"]
+    if not dicom_bytes:
+        return "No image data", 404
+
     if isinstance(dicom_bytes,memoryview):
         dicom_bytes=dicom_bytes.tobytes()
 
-    ds=pydicom.dcmread(io.BytesIO(dicom_bytes))
-    arr=ds.pixel_array.astype(float)
-    arr=(arr-arr.min())/(arr.max()-arr.min())
-    arr=(arr*255).astype(np.uint8)
+    try:
+        ds=pydicom.dcmread(io.BytesIO(dicom_bytes))
+        arr=ds.pixel_array.astype(float)
 
-    img=Image.fromarray(arr)
-    buf=io.BytesIO()
-    img.save(buf,format="PNG")
-    buf.seek(0)
-    return buf.read(),200,{"Content-Type":"image/png"}
+        if arr.max() != arr.min():
+            arr=(arr-arr.min())/(arr.max()-arr.min())
+        else:
+            arr=np.zeros(arr.shape)
+
+        arr=(arr*255).astype(np.uint8)
+
+        img=Image.fromarray(arr)
+        buf=io.BytesIO()
+        img.save(buf,format="PNG")
+        buf.seek(0)
+        return buf.read(),200,{"Content-Type":"image/png"}
+
+    except Exception as e:
+        logger.error(f"DICOM processing error: {str(e)}")
+        return "Image processing error", 500
 
 # ================= VIEW =================
 @app.route("/view/<int:id>",methods=["GET","POST"])
@@ -282,9 +228,7 @@ def view(id):
     cur=conn.cursor()
 
     if request.method=="POST" and session["role"]=="radiologist":
-
         logger.info(f"Radiologist '{session.get('username')}' submitted report for patient ID {id}")
-
         cur.execute("UPDATE patients SET report=%s,status='Reviewed' WHERE id=%s",
                     (request.form["report"],id))
         conn.commit()
