@@ -200,6 +200,9 @@ def login_page():
 # =========================
 # DASHBOARD
 # =========================
+# =========================
+# DASHBOARD (PROFESSIONAL UI RESTORED)
+# =========================
 @app.route("/dashboard")
 def dashboard():
     if "username" not in session:
@@ -213,23 +216,65 @@ def dashboard():
     conn.close()
 
     return render_template_string("""
-    <h2>{{ role.capitalize() }} Dashboard</h2>
-    {% if role == "technician" %}
-        <a href="/add_patient_page">Add Patient</a><br><br>
-    {% endif %}
-    <table border="1">
-    <tr><th>MRN</th><th>Name</th><th>Status</th><th>Action</th></tr>
-    {% for p in patients %}
-    <tr>
-        <td>{{ p.mrn }}</td>
-        <td>{{ p.name }}</td>
-        <td>{{ p.status }}</td>
-        <td><a href="/view/{{ p.id }}">Open</a></td>
-    </tr>
-    {% endfor %}
-    </table>
-    <br><a href="/logout">Logout</a>
-    """, patients=patients, role=session["role"])
+<!DOCTYPE html>
+<html>
+<head>
+<title>Dashboard</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-dark bg-dark px-4">
+<span class="navbar-brand">
+<i class="fa-solid fa-hospital"></i> {{ role.capitalize() }} Dashboard
+</span>
+<a href="/logout" class="btn btn-danger">Logout</a>
+</nav>
+
+<div class="container mt-4">
+
+{% if role == "technician" %}
+<a href="/add_patient_page" class="btn btn-success mb-4">
+<i class="fa-solid fa-user-plus"></i> Add Patient
+</a>
+{% endif %}
+
+<div class="row">
+{% for p in patients %}
+<div class="col-md-6 col-lg-4">
+<div class="card shadow-sm mb-4 border-0">
+<div class="card-body">
+
+<h5 class="card-title">{{ p.mrn }}</h5>
+<p><strong>Name:</strong> {{ p.name }}</p>
+
+{% if p.status == "Pending" %}
+<p>Status:
+<span class="badge bg-warning text-dark">Pending</span>
+</p>
+{% else %}
+<p>Status:
+<span class="badge bg-success">Reviewed</span>
+</p>
+{% endif %}
+
+<a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">
+<i class="fa-solid fa-folder-open"></i> Open Case
+</a>
+
+</div>
+</div>
+</div>
+{% endfor %}
+</div>
+
+</div>
+</body>
+</html>
+""", patients=patients, role=session["role"])
 
 # =========================
 # ADD PATIENT
