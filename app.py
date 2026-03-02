@@ -450,3 +450,32 @@ def view_patient(patient_id):
 def logout():
     session.clear()
     return redirect("/")
+@app.route("/fix_db")
+def fix_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        # Drop old studies table
+        cur.execute("DROP TABLE IF EXISTS studies;")
+
+        # Create new studies table
+        cur.execute("""
+        CREATE TABLE studies (
+            id SERIAL PRIMARY KEY,
+            patient_id INTEGER REFERENCES patients(id) ON DELETE CASCADE,
+            file_name VARCHAR(255),
+            dicom_data BYTEA NOT NULL
+        );
+        """)
+
+        conn.commit()
+        return "Studies table recreated successfully!"
+
+    except Exception as e:
+        conn.rollback()
+        return f"Error: {str(e)}"
+
+    finally:
+        cur.close()
+        conn.close()
