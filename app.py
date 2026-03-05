@@ -121,17 +121,74 @@ def register():
         return redirect("/login_page")
 
     return """
-    <h2>Register</h2>
-    <form method="post">
-    Username:<input name="username"><br><br>
-    Password:<input type="password" name="password"><br><br>
-    <select name="role">
-        <option value="technician">Technician</option>
-        <option value="radiologist">Radiologist</option>
-    </select><br><br>
-    <button>Register</button>
-    </form>
-    """
+<!DOCTYPE html>
+<html>
+<head>
+<title>Register</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+
+body{
+background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+height:100vh;
+}
+
+.register-box{
+background:white;
+padding:40px;
+border-radius:15px;
+width:420px;
+box-shadow:0 10px 40px rgba(0,0,0,0.4);
+}
+
+</style>
+</head>
+
+<body class="d-flex justify-content-center align-items-center">
+
+<div class="register-box">
+
+<h3 class="text-center mb-4">📝 Create Account</h3>
+
+<form method="post">
+
+<div class="mb-3">
+<label class="form-label">Username</label>
+<input class="form-control" name="username" required>
+</div>
+
+<div class="mb-3">
+<label class="form-label">Password</label>
+<input type="password" class="form-control" name="password" required>
+</div>
+
+<div class="mb-3">
+<label class="form-label">Role</label>
+<select class="form-select" name="role">
+<option value="technician">Technician</option>
+<option value="radiologist">Radiologist</option>
+</select>
+</div>
+
+<div class="d-grid">
+<button class="btn btn-success">Register</button>
+</div>
+
+</form>
+
+<br>
+
+<div class="text-center">
+<a href="/" class="btn btn-secondary btn-sm">Back</a>
+</div>
+
+</div>
+
+</body>
+</html>
+"""
 
 # ================= LOGIN =================
 @app.route("/login_page")
