@@ -409,6 +409,11 @@ def view(id):
 <br><a href="/dashboard">Back</a>
 """,patient=patient,role=session["role"])
 
+
+@app.route("/health")
+def health():
+    return "OK", 200
+
 @app.route("/logout")
 def logout():
     session.clear()
