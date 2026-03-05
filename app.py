@@ -348,21 +348,113 @@ def add_patient_page():
         return "Unauthorized"
 
     return """
-    <h2>Add Patient</h2>
-    <form method="post" action="/add_patient" enctype="multipart/form-data">
-    Name:<input name="name"><br><br>
-    Age:<input name="age"><br><br>
-    Gender:<input name="gender"><br><br>
-    Contact:<input name="contact"><br><br>
-    BP:<input name="bp"><br><br>
-    HR:<input name="hr"><br><br>
-    Temp:<input name="temperature"><br><br>
-    SPO2:<input name="spo2"><br><br>
-    RR:<input name="rr"><br><br>
-    DICOM File:<input type="file" name="file"><br><br>
-    <button>Add</button>
-    </form>
-    """
+<!DOCTYPE html>
+<html>
+<head>
+<title>Add Patient</title>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+
+body{
+background: linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+min-height:100vh;
+padding-top:40px;
+}
+
+.patient-box{
+background:white;
+padding:40px;
+border-radius:15px;
+width:650px;
+margin:auto;
+box-shadow:0 10px 40px rgba(0,0,0,0.4);
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="patient-box">
+
+<h3 class="text-center mb-4">🩺 Add New Patient</h3>
+
+<form method="post" action="/add_patient" enctype="multipart/form-data">
+
+<div class="row">
+
+<div class="col-md-6 mb-3">
+<label>Name</label>
+<input class="form-control" name="name" required>
+</div>
+
+<div class="col-md-6 mb-3">
+<label>Age</label>
+<input class="form-control" name="age">
+</div>
+
+<div class="col-md-6 mb-3">
+<label>Gender</label>
+<input class="form-control" name="gender">
+</div>
+
+<div class="col-md-6 mb-3">
+<label>Contact</label>
+<input class="form-control" name="contact">
+</div>
+
+<div class="col-md-4 mb-3">
+<label>BP</label>
+<input class="form-control" name="bp">
+</div>
+
+<div class="col-md-4 mb-3">
+<label>HR</label>
+<input class="form-control" name="hr">
+</div>
+
+<div class="col-md-4 mb-3">
+<label>Temp</label>
+<input class="form-control" name="temperature">
+</div>
+
+<div class="col-md-4 mb-3">
+<label>SPO2</label>
+<input class="form-control" name="spo2">
+</div>
+
+<div class="col-md-4 mb-3">
+<label>RR</label>
+<input class="form-control" name="rr">
+</div>
+
+<div class="col-md-12 mb-3">
+<label>DICOM File</label>
+<input type="file" class="form-control" name="file">
+</div>
+
+</div>
+
+<div class="d-grid">
+<button class="btn btn-success">Add Patient</button>
+</div>
+
+</form>
+
+<br>
+
+<div class="text-center">
+<a href="/dashboard" class="btn btn-secondary btn-sm">Back</a>
+</div>
+
+</div>
+
+</body>
+</html>
+"""
 
 @app.route("/add_patient",methods=["POST"])
 def add_patient():
