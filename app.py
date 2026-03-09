@@ -93,9 +93,11 @@ body {
 </html>
 """)
 
+
 # ================= INIT DB =================
 @app.route("/init_db")
 def init_db():
+
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -128,10 +130,10 @@ def init_db():
     """)
 
     # Add email column if table already existed
-     cur.execute("""
-     ALTER TABLE patients
-     ADD COLUMN IF NOT EXISTS email VARCHAR(150);
-     """)
+    cur.execute("""
+    ALTER TABLE patients
+    ADD COLUMN IF NOT EXISTS email VARCHAR(150);
+    """)
 
     cur.execute("""
     CREATE TABLE IF NOT EXISTS studies (
