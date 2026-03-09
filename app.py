@@ -21,9 +21,6 @@ def get_db_connection():
         sslmode="require"
     )
 
-# ================= EMAIL FUNCTION =================
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
 
 # ================= EMAIL FUNCTION =================
 def send_report_email(to_email, patient_name, report_text):
