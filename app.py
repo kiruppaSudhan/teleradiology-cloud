@@ -28,6 +28,10 @@ def send_report_email(to_email, patient_name, report_text):
     sender_email = os.environ.get("EMAIL_USER")
     sender_password = os.environ.get("EMAIL_PASS")
 
+    print("EMAIL FUNCTION STARTED")
+    print("Sender:", sender_email)
+    print("Receiver:", to_email)
+
     subject = "Radiology Report Available"
 
     body = f"""
@@ -38,7 +42,6 @@ Your radiology report is now available.
 Report Summary:
 {report_text}
 
-Thank you,
 Tele-Radiology System
 """
 
@@ -46,17 +49,26 @@ Tele-Radiology System
     msg["From"] = sender_email
     msg["To"] = to_email
     msg["Subject"] = subject
-
-    msg.attach(MIMEText(body, "plain"))
+    msg.attach(MIMEText(body,"plain"))
 
     try:
-        server = smtplib.SMTP("smtp.gmail.com", 587)
+        print("Connecting SMTP...")
+        server = smtplib.SMTP("smtp.gmail.com",587)
+
         server.starttls()
-        server.login(sender_email, sender_password)
+        print("Logging in Gmail...")
+
+        server.login(sender_email,sender_password)
+
+        print("Sending email...")
         server.send_message(msg)
+
         server.quit()
+
+        print("EMAIL SENT SUCCESSFULLY")
+
     except Exception as e:
-        print("Email sending failed:", e)
+        print("EMAIL ERROR:", e)
 
 # ================= HOME =================
 @app.route("/")
