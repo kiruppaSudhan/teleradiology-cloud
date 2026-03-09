@@ -77,6 +77,7 @@ def init_db():
         age VARCHAR(10),
         gender VARCHAR(20),
         contact VARCHAR(100),
+        email VARCHAR(150),
         bp VARCHAR(20),
         hr VARCHAR(20),
         temperature VARCHAR(20),
@@ -406,6 +407,11 @@ box-shadow:0 10px 40px rgba(0,0,0,0.4);
 <input class="form-control" name="contact">
 </div>
 
+<div class="col-md-6 mb-3">
+<label>Email</label>
+<input class="form-control" type="email" name="email">
+</div>
+
 <div class="col-md-4 mb-3">
 <label>BP</label>
 <input class="form-control" name="bp">
@@ -466,7 +472,7 @@ def add_patient():
     mrn=f"MRN{count:04d}"
 
     cur.execute("""
-    INSERT INTO patients (mrn,name,age,gender,contact,bp,hr,temperature,spo2,rr,status,report)
+    INSERT INTO patients (mrn,name,age,gender,contact,email,bp,hr,temperature,spo2,rr,status,report)
     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Pending','')
     RETURNING id
     """,(mrn,
@@ -474,6 +480,7 @@ def add_patient():
          request.form["age"],
          request.form["gender"],
          request.form["contact"],
+         request.form["email"],
          request.form["bp"],
          request.form["hr"],
          request.form["temperature"],
