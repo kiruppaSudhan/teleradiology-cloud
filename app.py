@@ -127,6 +127,12 @@ def init_db():
     );
     """)
 
+    # Add email column if table already existed
+     cur.execute("""
+     ALTER TABLE patients
+     ADD COLUMN IF NOT EXISTS email VARCHAR(150);
+     """)
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS studies (
         id SERIAL PRIMARY KEY,
