@@ -7,9 +7,8 @@ import pydicom
 import numpy as np
 from PIL import Image
 import io
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
@@ -23,49 +22,35 @@ def get_db_connection():
     )
 
 # ================= EMAIL FUNCTION =================
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+
+# ================= EMAIL FUNCTION =================
 def send_report_email(to_email, patient_name, report_text):
 
-    sender_email = os.environ.get("EMAIL_USER")
-    sender_password = os.environ.get("EMAIL_PASS")
+    message = Mail(
+        from_email=os.environ.get("EMAIL_USER"),
+        to_emails=to_email,
+        subject="Radiology Report Available",
+        html_content=f"""
+        <h2>Hello {patient_name}</h2>
 
-    print("EMAIL FUNCTION STARTED")
-    print("Sender:", sender_email)
-    print("Receiver:", to_email)
+        <p>Your radiology report is ready.</p>
 
-    subject = "Radiology Report Available"
+        <b>Report Summary:</b><br>
+        {report_text}
 
-    body = f"""
-Hello {patient_name},
-
-Your radiology report is now available.
-
-Report Summary:
-{report_text}
-
-Tele-Radiology System
-"""
-
-    msg = MIMEMultipart()
-    msg["From"] = sender_email
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body,"plain"))
+        <br><br>
+        Tele-Radiology System
+        """
+    )
 
     try:
-        print("Connecting SMTP...")
-        server = smtplib.SMTP("smtp.gmail.com",587)
-
-        server.starttls()
-        print("Logging in Gmail...")
-
-        server.login(sender_email,sender_password)
-
-        print("Sending email...")
-        server.send_message(msg)
-
-        server.quit()
+        sg = SendGridAPIClient(os.environ.get("SENDGRID_API_KEY"))
+        response = sg.send(message)
 
         print("EMAIL SENT SUCCESSFULLY")
+        print(response.status_code)
 
     except Exception as e:
         print("EMAIL ERROR:", e)
