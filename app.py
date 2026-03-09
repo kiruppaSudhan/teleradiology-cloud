@@ -591,6 +591,7 @@ def view(id):
        # get patient email
        cur.execute("SELECT email,name FROM patients WHERE id=%s",(id,))
        p = cur.fetchone()
+       print("Patient email:", p["email"])
 
        if p and p["email"]:
            try:
