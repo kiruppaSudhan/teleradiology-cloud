@@ -7,6 +7,9 @@ import pydicom
 import numpy as np
 from PIL import Image
 import io
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
@@ -18,6 +21,42 @@ def get_db_connection():
         cursor_factory=RealDictCursor,
         sslmode="require"
     )
+
+# ================= EMAIL FUNCTION =================
+def send_report_email(to_email, patient_name, report_text):
+
+    sender_email = os.environ.get("EMAIL_USER")
+    sender_password = os.environ.get("EMAIL_PASS")
+
+    subject = "Radiology Report Available"
+
+    body = f"""
+Hello {patient_name},
+
+Your radiology report is now available.
+
+Report Summary:
+{report_text}
+
+Thank you,
+Tele-Radiology System
+"""
+
+    msg = MIMEMultipart()
+    msg["From"] = sender_email
+    msg["To"] = to_email
+    msg["Subject"] = subject
+
+    msg.attach(MIMEText(body, "plain"))
+
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        server.send_message(msg)
+        server.quit()
+    except Exception as e:
+        print("Email sending failed:", e)
 
 # ================= HOME =================
 @app.route("/")
@@ -473,19 +512,19 @@ def add_patient():
 
     cur.execute("""
     INSERT INTO patients (mrn,name,age,gender,contact,email,bp,hr,temperature,spo2,rr,status,report)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Pending','')
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Pending','')
     RETURNING id
     """,(mrn,
-         request.form["name"],
-         request.form["age"],
-         request.form["gender"],
-         request.form["contact"],
-         request.form["email"],
-         request.form["bp"],
-         request.form["hr"],
-         request.form["temperature"],
-         request.form["spo2"],
-         request.form["rr"]))
+     request.form["name"],
+     request.form["age"],
+     request.form["gender"],
+     request.form["contact"],
+     request.form["email"],
+     request.form["bp"],
+     request.form["hr"],
+     request.form["temperature"],
+     request.form["spo2"],
+     request.form["rr"]))
 
     patient_id=cur.fetchone()["id"]
     conn.commit()
@@ -534,9 +573,19 @@ def view(id):
     cur=conn.cursor()
 
     if request.method=="POST" and session["role"]=="radiologist":
-        cur.execute("UPDATE patients SET report=%s,status='Reviewed' WHERE id=%s",
-                    (request.form["report"],id))
-        conn.commit()
+
+       report_text = request.form["report"]
+
+       cur.execute("UPDATE patients SET report=%s,status='Reviewed' WHERE id=%s",
+                (report_text,id))
+       conn.commit()
+
+       # get patient email
+       cur.execute("SELECT email,name FROM patients WHERE id=%s",(id,))
+       p = cur.fetchone()
+
+       if p and p["email"]:
+           send_report_email(p["email"], p["name"], report_text)
 
     cur.execute("SELECT * FROM patients WHERE id=%s",(id,))
     patient=cur.fetchone()
