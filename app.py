@@ -593,7 +593,11 @@ def view(id):
        p = cur.fetchone()
 
        if p and p["email"]:
-           send_report_email(p["email"], p["name"], report_text)
+           try:
+               send_report_email(p["email"], p["name"], report_text)
+               print("Email sent to:", p["email"])
+           except Exception as e:
+               print("Email sending failed:", e)
 
     cur.execute("SELECT * FROM patients WHERE id=%s",(id,))
     patient=cur.fetchone()
