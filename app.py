@@ -571,6 +571,9 @@ def image(id):
 # ================= VIEW =================
 @app.route("/view/<int:id>",methods=["GET","POST"])
 def view(id):
+    if "role" not in session:
+        return redirect("/login_page")
+    
     conn=get_db_connection()
     cur=conn.cursor()
 
@@ -619,7 +622,7 @@ def view(id):
 {% endif %}
 
 <br><a href="/dashboard">Back</a>
-""",patient=patient,role=session["role"])
+""",patient=patient,role=session.get("role"))
 
 
 @app.route("/health")
