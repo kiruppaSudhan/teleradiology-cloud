@@ -480,7 +480,7 @@ box-shadow:0 10px 40px rgba(0,0,0,0.4);
 
 <div class="col-md-12 mb-3">
 <label>DICOM File</label>
-<input type="file" class="form-control" name="file">
+<input type="file" class="form-control" name="file" multiple>
 </div>
 
 </div>
@@ -531,13 +531,16 @@ def add_patient():
     patient_id=cur.fetchone()["id"]
     conn.commit()
 
-    file=request.files["file"]
-    if file:
-        cur.execute("""
-        INSERT INTO studies (patient_id,file_name,dicom_data)
-        VALUES (%s,%s,%s)
-        """,(patient_id,file.filename,psycopg2.Binary(file.read())))
-        conn.commit()
+    files = request.files.getlist("file")
+
+    for file in files:
+        if file and file.filename != "":
+            cur.execute("""
+            INSERT INTO studies (patient_id,file_name,dicom_data)
+            VALUES (%s,%s,%s)
+            """,(patient_id,file.filename,psycopg2.Binary(file.read())))
+
+    conn.commit()
 
     cur.close()
     conn.close()
@@ -548,7 +551,7 @@ def add_patient():
 def image(id):
     conn=get_db_connection()
     cur=conn.cursor()
-    cur.execute("SELECT dicom_data FROM studies WHERE patient_id=%s",(id,))
+    cur.execute("SELECT dicom_data FROM studies WHERE id=%s",(id,))
     study=cur.fetchone()
     cur.close()
     conn.close()
@@ -599,13 +602,19 @@ def view(id):
 
     cur.execute("SELECT * FROM patients WHERE id=%s",(id,))
     patient=cur.fetchone()
+    cur.execute("SELECT id FROM studies WHERE patient_id=%s",(id,))
+    studies = cur.fetchall()
     cur.close()
     conn.close()
 
     return render_template_string("""
 <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
 <p>Status: {{ patient.status }}</p>
-<img src="/image/{{ patient.id }}" width="400"><br><br>
+<h4>Patient Scans</h4>
+
+{% for s in studies %}
+<img src="/image/{{ s.id }}" width="300" style="margin:10px;">
+{% endfor %}
 
 {% if role=='radiologist' %}
 <form method="post">
@@ -622,7 +631,7 @@ def view(id):
 {% endif %}
 
 <br><a href="/dashboard">Back</a>
-""",patient=patient,role=session.get("role"))
+""",patient=patient,studies=studies,role=session.get("role"))
 
 
 @app.route("/health")
