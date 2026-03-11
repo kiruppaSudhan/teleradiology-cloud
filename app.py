@@ -138,6 +138,16 @@ def init_db():
     );
     """)
 
+    cur.execute("""
+    ALTER TABLE studies
+    ADD COLUMN IF NOT EXISTS ctdi FLOAT;
+    """)
+
+    cur.execute("""
+    ALTER TABLE studies
+    ADD COLUMN IF NOT EXISTS dlp FLOAT;
+    """)
+
     conn.commit()
     cur.close()
     conn.close()
@@ -535,10 +545,24 @@ def add_patient():
 
     for file in files:
         if file and file.filename != "":
-            cur.execute("""
-            INSERT INTO studies (patient_id,file_name,dicom_data)
-            VALUES (%s,%s,%s)
-            """,(patient_id,file.filename,psycopg2.Binary(file.read())))
+
+           dicom_bytes = file.read()
+
+           ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
+
+           ctdi = None
+           dlp = None
+
+           if "CTDIvol" in ds:
+               ctdi = float(ds.CTDIvol)
+
+           if "DLP" in ds:
+               dlp = float(ds.DLP)
+
+           cur.execute("""
+           INSERT INTO studies (patient_id,file_name,dicom_data,ctdi,dlp)
+           VALUES (%s,%s,%s,%s,%s)
+           """,(patient_id,file.filename,psycopg2.Binary(dicom_bytes),ctdi,dlp))
 
     conn.commit()
 
@@ -561,10 +585,24 @@ def upload_scan(id):
 
     for file in files:
         if file and file.filename != "":
-            cur.execute("""
-            INSERT INTO studies (patient_id,file_name,dicom_data)
-            VALUES (%s,%s,%s)
-            """,(id,file.filename,psycopg2.Binary(file.read())))
+
+           dicom_bytes = file.read()
+
+           ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
+
+           ctdi = None
+           dlp = None
+
+           if "CTDIvol" in ds:
+               ctdi = float(ds.CTDIvol)
+
+           if "DLP" in ds:
+               dlp = float(ds.DLP)
+
+        cur.execute("""
+        INSERT INTO studies (patient_id,file_name,dicom_data,ctdi,dlp)
+        VALUES (%s,%s,%s,%s,%s)
+        """,(id,file.filename,psycopg2.Binary(dicom_bytes),ctdi,dlp))
 
     conn.commit()
     cur.close()
@@ -630,6 +668,14 @@ def view(id):
     patient=cur.fetchone()
     cur.execute("SELECT id FROM studies WHERE patient_id=%s",(id,))
     studies = cur.fetchall()
+    cur.execute("SELECT SUM(dlp) as total_dose FROM studies WHERE patient_id=%s",(id,))
+    dose_row = cur.fetchone()
+    dose = dose_row["total_dose"] if dose_row else None
+    # ADD THIS PART HERE
+    dose_warning = False
+
+    if dose and dose > 1000:
+       dose_warning = True
     cur.close()
     conn.close()
 
@@ -637,6 +683,14 @@ def view(id):
 <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
 <p>Status: {{ patient.status }}</p>
 <h4>Patient Scans</h4>
+<h4>Total Radiation Dose</h4>
+<p>{{ dose }} mGy*cm</p>
+
+{% if dose_warning %}
+<div style="color:red;font-weight:bold">
+⚠ High Radiation Dose
+</div>
+{% endif %}
 {% if role=='technician' %}
 <br><br>
 <form method="post" action="/upload_scan/{{ patient.id }}" enctype="multipart/form-data">
@@ -665,8 +719,7 @@ def view(id):
 {% endif %}
 
 <br><a href="/dashboard">Back</a>
-""",patient=patient,studies=studies,role=session.get("role"))
-
+""",patient=patient,studies=studies,role=session.get("role"),dose=dose,dose_warning=dose_warning)
 
 @app.route("/health")
 def health():
