@@ -599,10 +599,10 @@ def upload_scan(id):
            if "DLP" in ds:
                dlp = float(ds.DLP)
 
-        cur.execute("""
-        INSERT INTO studies (patient_id,file_name,dicom_data,ctdi,dlp)
-        VALUES (%s,%s,%s,%s,%s)
-        """,(id,file.filename,psycopg2.Binary(dicom_bytes),ctdi,dlp))
+           cur.execute("""
+           INSERT INTO studies (patient_id,file_name,dicom_data,ctdi,dlp)
+           VALUES (%s,%s,%s,%s,%s)
+           """,(id,file.filename,psycopg2.Binary(dicom_bytes),ctdi,dlp))
 
     conn.commit()
     cur.close()
