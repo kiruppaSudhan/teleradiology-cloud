@@ -546,6 +546,32 @@ def add_patient():
     conn.close()
     return redirect("/dashboard")
 
+
+# ================= UPLOAD ADDITIONAL SCAN =================
+@app.route("/upload_scan/<int:id>", methods=["POST"])
+def upload_scan(id):
+
+    if session.get("role") != "technician":
+        return "Unauthorized"
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    files = request.files.getlist("file")
+
+    for file in files:
+        if file and file.filename != "":
+            cur.execute("""
+            INSERT INTO studies (patient_id,file_name,dicom_data)
+            VALUES (%s,%s,%s)
+            """,(id,file.filename,psycopg2.Binary(file.read())))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect(f"/view/{id}")
+
 # ================= IMAGE =================
 @app.route("/image/<int:id>")
 def image(id):
@@ -611,6 +637,14 @@ def view(id):
 <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
 <p>Status: {{ patient.status }}</p>
 <h4>Patient Scans</h4>
+{% if role=='technician' %}
+<br><br>
+<form method="post" action="/upload_scan/{{ patient.id }}" enctype="multipart/form-data">
+<input type="file" name="file" multiple>
+<br><br>
+<button class="btn btn-primary">Upload Additional Scan</button>
+</form>
+{% endif %}
 
 {% for s in studies %}
 <img src="/image/{{ s.id }}" width="300" style="margin:10px;">
