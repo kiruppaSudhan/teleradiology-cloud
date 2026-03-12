@@ -679,7 +679,7 @@ def view(id):
     cur.close()
     conn.close()
 
-    return render_template_string("""
+return render_template_string("""
 <!DOCTYPE html>
 <html>
 
