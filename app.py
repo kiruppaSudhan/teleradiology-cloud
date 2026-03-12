@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, session, render_template_string
+    from flask import Flask, request, redirect, session, render_template_string
 import bcrypt
 import os
 import psycopg2
@@ -680,45 +680,130 @@ def view(id):
     conn.close()
 
     return render_template_string("""
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+
+.viewer{
+display:flex;
+gap:20px;
+}
+
+.image-panel{
+flex:2;
+background:#111;
+padding:20px;
+border-radius:10px;
+}
+
+.report-panel{
+flex:1;
+background:#f5f5f5;
+padding:20px;
+border-radius:10px;
+}
+
+.scan-img{
+max-width:100%;
+margin-bottom:10px;
+border:3px solid #333;
+}
+
+</style>
+
+</head>
+
+<body class="container mt-4">
+
 <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
+
 <p>Status: {{ patient.status }}</p>
-<h4>Patient Scans</h4>
+
 <h4>Total Radiation Dose</h4>
-<p>{{ dose }} mGy*cm</p>
+
+<p>{{ dose if dose else 0 }} mGy*cm</p>
 
 {% if dose_warning %}
-<div style="color:red;font-weight:bold">
+<div class="alert alert-danger">
 ⚠ High Radiation Dose
 </div>
 {% endif %}
+
+<div class="viewer">
+
+<div class="image-panel">
+
+<h5 class="text-white">Patient Scans</h5>
+
 {% if role=='technician' %}
-<br><br>
+
 <form method="post" action="/upload_scan/{{ patient.id }}" enctype="multipart/form-data">
-<input type="file" name="file" multiple>
-<br><br>
-<button class="btn btn-primary">Upload Additional Scan</button>
+
+<input type="file" name="file" multiple class="form-control mb-2">
+
+<button class="btn btn-primary btn-sm">Upload Additional Scan</button>
+
 </form>
+
+<br>
+
 {% endif %}
 
 {% for s in studies %}
-<img src="/image/{{ s.id }}" width="300" style="margin:10px;">
+
+<img src="/image/{{ s.id }}" class="scan-img">
+
 {% endfor %}
 
+</div>
+
+<div class="report-panel">
+
 {% if role=='radiologist' %}
+
+<h5>Radiology Report</h5>
+
 <form method="post">
-<textarea name="report" rows="5" cols="60">{{ patient.report }}</textarea><br><br>
-<button>Submit Report</button>
+
+<textarea name="report" rows="10" class="form-control">{{ patient.report }}</textarea>
+
+<br>
+
+<button class="btn btn-success">Submit Report</button>
+
 </form>
+
 {% endif %}
 
 {% if role=='technician' and patient.status=='Reviewed' %}
-<h4>Radiologist Report:</h4>
-<div style="background:#f5f5f5;padding:10px;">
+
+<h5>Radiologist Report</h5>
+
+<div class="alert alert-secondary">
+
 {{ patient.report }}
+
 </div>
+
 {% endif %}
 
-<br><a href="/dashboard">Back</a>
+</div>
+
+</div>
+
+<br>
+
+<a href="/dashboard" class="btn btn-secondary">Back</a>
+
+</body>
+
+</html>
+
 """,patient=patient,studies=studies,role=session.get("role"),dose=dose,dose_warning=dose_warning)
 
 @app.route("/health")
