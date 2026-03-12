@@ -714,6 +714,10 @@ margin-bottom:10px;
 border:3px solid #333;
 transition: all 0.2s ease;
 }
+
+.dicom-image.active{
+border:3px solid red;
+}
 </style>
 
 </head>
@@ -771,7 +775,7 @@ transition: all 0.2s ease;
 <br><br>
 
 {% for s in studies %}
-<img src="/image/{{ s.id }}" class="scan-img dicom-image" id="dicomImage">
+<img src="/image/{{ s.id }}" class="scan-img dicom-image" onclick="selectImage(this)">
 {% endfor %}
 
 </div>
@@ -818,10 +822,21 @@ transition: all 0.2s ease;
 let zoom = 1
 let brightness = 100
 let contrast = 100
+let activeImage = null
+function selectImage(img){
 
+document.querySelectorAll(".dicom-image").forEach(i=>{
+i.classList.remove("active")
+})
+
+img.classList.add("active")
+
+activeImage = img
+
+}
 function updateImage(){
-
-let img = document.getElementById("dicomImage")
+if(!activeImage) return
+let img = activeImage
 
 img.style.transform = "scale("+zoom+")"
 
