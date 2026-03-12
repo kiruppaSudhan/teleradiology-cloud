@@ -712,8 +712,8 @@ border-radius:10px;
 max-width:100%;
 margin-bottom:10px;
 border:3px solid #333;
+transition: all 0.2s ease;
 }
-
 </style>
 
 </head>
@@ -753,11 +753,25 @@ border:3px solid #333;
 <br>
 
 {% endif %}
+<h5 class="text-white">Viewer Controls</h5>
+
+<label class="text-white">Zoom</label>
+<input type="range" id="zoomSlider" min="1" max="3" step="0.1" value="1">
+
+<br>
+
+<label class="text-white">Brightness</label>
+<input type="range" id="brightnessSlider" min="50" max="200" value="100">
+
+<br>
+
+<label class="text-white">Contrast</label>
+<input type="range" id="contrastSlider" min="50" max="200" value="100">
+
+<br><br>
 
 {% for s in studies %}
-
-<img src="/image/{{ s.id }}" class="scan-img">
-
+<img src="/image/{{ s.id }}" class="scan-img dicom-image" id="dicomImage">
 {% endfor %}
 
 </div>
@@ -799,6 +813,39 @@ border:3px solid #333;
 <br>
 
 <a href="/dashboard" class="btn btn-secondary">Back</a>
+<script>
+
+let zoom = 1
+let brightness = 100
+let contrast = 100
+
+function updateImage(){
+
+let img = document.getElementById("dicomImage")
+
+img.style.transform = "scale("+zoom+")"
+
+img.style.filter =
+"brightness("+brightness+"%) contrast("+contrast+"%)"
+
+}
+
+document.getElementById("zoomSlider").oninput = function(){
+zoom = this.value
+updateImage()
+}
+
+document.getElementById("brightnessSlider").oninput = function(){
+brightness = this.value
+updateImage()
+}
+
+document.getElementById("contrastSlider").oninput = function(){
+contrast = this.value
+updateImage()
+}
+
+</script>
 
 </body>
 
