@@ -1,4 +1,4 @@
-    from flask import Flask, request, redirect, session, render_template_string
+from flask import Flask, request, redirect, session, render_template_string
 import bcrypt
 import os
 import psycopg2
@@ -679,7 +679,7 @@ def view(id):
     cur.close()
     conn.close()
 
-return render_template_string("""
+    return render_template_string("""
 <!DOCTYPE html>
 <html>
 
