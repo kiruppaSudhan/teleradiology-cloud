@@ -15,12 +15,21 @@ app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
 # ================= DATABASE =================
 def get_db_connection():
-    return psycopg2.connect(
-        os.environ["DATABASE_URL"],
-        cursor_factory=RealDictCursor,
-        sslmode="require"
-    )
+    import time
 
+    for i in range(5):
+        try:
+            return psycopg2.connect(
+                os.environ.get("DATABASE_URL"),
+                cursor_factory=RealDictCursor,
+                sslmode="require",
+                connect_timeout=10
+            )
+        except Exception as e:
+            print("DB connection failed, retrying...", e)
+            time.sleep(2)
+
+    raise Exception("Database connection failed")
 
 # ================= EMAIL FUNCTION =================
 def send_report_email(to_email, patient_name, report_text):
