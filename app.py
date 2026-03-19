@@ -32,7 +32,11 @@ def get_db_connection():
     raise Exception("Database connection failed")
 
 # ================= EMAIL FUNCTION =================
-def send_report_email(to_email, patient_name, report_text):
+def send_report_email(to_email, patient_name, report_text, dose, studies, dose_level):
+    dose_details = ""
+
+    for i, s in enumerate(studies):
+        dose_details += f"Scan {i+1} → CTDI: {s['ctdi']} | DLP: {s['dlp']}<br>"
 
     message = Mail(
         from_email=os.environ.get("EMAIL_USER"),
@@ -43,7 +47,17 @@ def send_report_email(to_email, patient_name, report_text):
 
         <p>Your radiology report is ready.</p>
 
-        <b>Report Summary:</b><br>
+        <h3>Radiation Dose Summary</h3>
+
+        <b>Total Dose:</b> {dose} mGy·cm <br>
+        <b>Risk Level:</b> {dose_level.upper()} ⚠ <br><br>
+
+        <b>Scan-wise Dose:</b><br>
+        {dose_details}
+
+        <br><br>
+
+        <h3>Report Summary</h3>
         {report_text}
 
         <br><br>
@@ -55,12 +69,10 @@ def send_report_email(to_email, patient_name, report_text):
         sg = SendGridAPIClient(os.environ.get("SENDGRID_API_KEY"))
         response = sg.send(message)
 
-        print("EMAIL SENT SUCCESSFULLY")
-        print(response.status_code)
+        print("Email sent successfully:", response.status_code)
 
     except Exception as e:
         print("EMAIL ERROR:", e)
-
 # ================= HOME =================
 @app.route("/")
 def home():
@@ -688,7 +700,7 @@ def view(id):
 
        if p and p["email"]:
            try:
-               send_report_email(p["email"], p["name"], report_text)
+               send_report_email(p["email"], p["name"], report_text, dose, studies, dose_level)
                print("Email sent to:", p["email"])
            except Exception as e:
                print("Email sending failed:", e)
