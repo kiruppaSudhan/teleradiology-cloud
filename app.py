@@ -553,12 +553,14 @@ def add_patient():
            ctdi = None
            dlp = None
 
-           if "CTDIvol" in ds:
-               ctdi = float(ds.CTDIvol)
-
-           if "DLP" in ds:
-               dlp = float(ds.DLP)
-
+           # Try standard tags
+           if hasattr(ds, "CTDIvol"):
+              ctdi = float(ds.CTDIvol)
+ 
+           if hasattr(ds, "DLP"):
+              dlp = float(ds.DLP)
+           print("DEBUG → CTDI:", ctdi, "DLP:", dlp)
+           
            cur.execute("""
            INSERT INTO studies (patient_id,file_name,dicom_data,ctdi,dlp)
            VALUES (%s,%s,%s,%s,%s)
@@ -593,12 +595,15 @@ def upload_scan(id):
            ctdi = None
            dlp = None
 
-           if "CTDIvol" in ds:
-               ctdi = float(ds.CTDIvol)
+           # Try standard tags
+           if hasattr(ds, "CTDIvol"):
+              ctdi = float(ds.CTDIvol)
 
-           if "DLP" in ds:
-               dlp = float(ds.DLP)
-
+           if hasattr(ds, "DLP"):
+              dlp = float(ds.DLP)
+              
+           print("DEBUG → CTDI:", ctdi, "DLP:", dlp)
+           
            cur.execute("""
            INSERT INTO studies (patient_id,file_name,dicom_data,ctdi,dlp)
            VALUES (%s,%s,%s,%s,%s)
@@ -624,7 +629,7 @@ def image(id):
     if isinstance(dicom_bytes,memoryview):
         dicom_bytes=dicom_bytes.tobytes()
 
-    ds=pydicom.dcmread(io.BytesIO(dicom_bytes))
+    ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
     arr=ds.pixel_array.astype(float)
     arr=(arr-arr.min())/(arr.max()-arr.min())
     arr=(arr*255).astype(np.uint8)
@@ -666,16 +671,23 @@ def view(id):
 
     cur.execute("SELECT * FROM patients WHERE id=%s",(id,))
     patient=cur.fetchone()
-    cur.execute("SELECT id FROM studies WHERE patient_id=%s",(id,))
+    cur.execute("""SELECT id, ctdi, dlp FROM studies WHERE patient_id=%s""",(id,))
     studies = cur.fetchall()
     cur.execute("SELECT SUM(dlp) as total_dose FROM studies WHERE patient_id=%s",(id,))
     dose_row = cur.fetchone()
-    dose = dose_row["total_dose"] if dose_row else None
-    # ADD THIS PART HERE
-    dose_warning = False
+    dose = None
 
-    if dose and dose > 1000:
-       dose_warning = True
+    if dose_row and dose_row["total_dose"]:
+        dose = float(dose_row["total_dose"])
+    print("DEBUG → Total Dose:", dose)    
+    # ADD THIS PART HERE
+    dose_level = "safe"
+
+    if dose:
+        if dose > 1000:
+            dose_level = "high"
+        elif dose > 500:
+            dose_level = "moderate"
     cur.close()
     conn.close()
 
@@ -729,12 +741,25 @@ border:3px solid red;
 <p>Status: {{ patient.status }}</p>
 
 <h4>Total Radiation Dose</h4>
+{% if dose %}
+<p>{{ dose }} mGy*cm</p>
+{% else %}
+<p style="color:orange;">Dose data not available</p>
+{% endif %}
 
-<p>{{ dose if dose else 0 }} mGy*cm</p>
-
-{% if dose_warning %}
+{% if dose_level == "high" %}
 <div class="alert alert-danger">
-⚠ High Radiation Dose
+⚠ High Radiation Dose – Immediate Attention Required
+</div>
+
+{% elif dose_level == "moderate" %}
+<div class="alert alert-warning">
+⚠ Moderate Radiation Dose – Monitor Patient Exposure
+</div>
+
+{% else %}
+<div class="alert alert-success">
+✔ Safe Radiation Level
 </div>
 {% endif %}
 
@@ -775,7 +800,22 @@ border:3px solid red;
 <br><br>
 
 {% for s in studies %}
-<img src="/image/{{ s.id }}" class="scan-img dicom-image" onclick="selectImage(this)">
+
+<div style="margin-bottom:20px; display:inline-block;">
+
+<img src="/image/{{ s.id }}" 
+     class="scan-img dicom-image" 
+     onclick="selectImage(this)">
+
+<br>
+
+<small style="color:white;">
+CTDI: {{ s.ctdi if s.ctdi else "N/A" }} |
+DLP: {{ s.dlp if s.dlp else "N/A" }}
+</small>
+
+</div>
+
 {% endfor %}
 
 </div>
@@ -866,7 +906,7 @@ updateImage()
 
 </html>
 
-""",patient=patient,studies=studies,role=session.get("role"),dose=dose,dose_warning=dose_warning)
+""",patient=patient,studies=studies,role=session.get("role"),dose=dose,dose_level=dose_level)
 
 @app.route("/health")
 def health():
