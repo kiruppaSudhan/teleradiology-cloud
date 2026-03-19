@@ -698,13 +698,6 @@ def view(id):
        p = cur.fetchone()
        print("Patient email:", p["email"])
 
-       if p and p["email"]:
-           try:
-               send_report_email(p["email"], p["name"], report_text, dose, studies, dose_level)
-               print("Email sent to:", p["email"])
-           except Exception as e:
-               print("Email sending failed:", e)
-
     cur.execute("SELECT * FROM patients WHERE id=%s",(id,))
     patient=cur.fetchone()
     cur.execute("""SELECT id, ctdi, dlp FROM studies WHERE patient_id=%s""",(id,))
@@ -724,6 +717,13 @@ def view(id):
             dose_level = "high"
         elif dose > 500:
             dose_level = "moderate"
+    if request.method=="POST" and session["role"]=="radiologist":        
+       if p and p["email"]:
+           try:
+               send_report_email(p["email"], p["name"], report_text, dose, studies, dose_level)
+               print("Email sent to:", p["email"])
+           except Exception as e:
+               print("Email sending failed:", e)        
     cur.close()
     conn.close()
 
