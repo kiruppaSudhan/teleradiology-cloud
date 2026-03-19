@@ -559,6 +559,14 @@ def add_patient():
  
            if hasattr(ds, "DLP"):
               dlp = float(ds.DLP)
+           # DEMO PURPOSE ONLY (simulate dose if missing)
+           if dlp is None:
+               import random
+               dlp = random.randint(300, 1200)
+
+           if ctdi is None:
+               ctdi = round(dlp / 50, 2)
+               
            print("DEBUG → CTDI:", ctdi, "DLP:", dlp)
            
            cur.execute("""
@@ -602,6 +610,13 @@ def upload_scan(id):
            if hasattr(ds, "DLP"):
               dlp = float(ds.DLP)
               
+           # DEMO PURPOSE ONLY (simulate dose if missing)
+           if dlp is None:
+               import random
+               dlp = random.randint(300, 1200)
+
+           if ctdi is None:
+              ctdi = round(dlp / 50, 2)   
            print("DEBUG → CTDI:", ctdi, "DLP:", dlp)
            
            cur.execute("""
