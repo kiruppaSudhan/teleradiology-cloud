@@ -9,6 +9,10 @@ from PIL import Image
 import io
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import Attachment, FileContent, FileName, FileType, Disposition
+import base64
+from reportlab.platypus import Table, TableStyle
+from reportlab.lib import colors
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
@@ -19,7 +23,7 @@ def get_db_connection():
 
     for i in range(5):
         try:
-            return psycopg2.connect(
+            return psycopg2.connect( 
                 os.environ.get("DATABASE_URL"),
                 cursor_factory=RealDictCursor,
                 sslmode="require",
@@ -32,7 +36,7 @@ def get_db_connection():
     raise Exception("Database connection failed")
 
 # ================= EMAIL FUNCTION =================
-def send_report_email(to_email, patient_name, report_text, dose, studies, dose_level):
+def send_report_email(to_email, patient_name, report_text, dose, studies, dose_level, pdf_path):
     dose_details = ""
 
     for i, s in enumerate(studies):
@@ -64,6 +68,20 @@ def send_report_email(to_email, patient_name, report_text, dose, studies, dose_l
         Tele-Radiology System
         """
     )
+        # Attach PDF
+    with open(pdf_path, "rb") as f:
+        data = f.read()
+
+    encoded = base64.b64encode(data).decode()
+
+    attachment = Attachment(
+        FileContent(encoded),
+        FileName("Radiology_Report.pdf"),
+        FileType("application/pdf"),
+        Disposition("attachment")
+    )
+
+    message.attachment = attachment
 
     try:
         sg = SendGridAPIClient(os.environ.get("SENDGRID_API_KEY"))
@@ -73,6 +91,87 @@ def send_report_email(to_email, patient_name, report_text, dose, studies, dose_l
 
     except Exception as e:
         print("EMAIL ERROR:", e)
+
+
+
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import A4
+
+def generate_pdf(patient, report_text, dose, studies, dose_level):
+
+    file_path = f"/tmp/report_{patient['id']}.pdf"
+
+    doc = SimpleDocTemplate(file_path, pagesize=A4)
+    styles = getSampleStyleSheet()
+
+    content = []
+
+    # Title
+    content.append(Paragraph("<b>Tele-Radiology Report</b>", styles["Title"]))
+    content.append(Spacer(1, 10))
+
+    # Patient Info
+    content.append(Paragraph("<b>Patient Details</b>", styles["Heading2"]))
+    content.append(Spacer(1, 10))
+
+    patient_data = [
+        ["Name", patient["name"]],
+        ["MRN", patient["mrn"]],
+        ["Age", patient["age"]],
+        ["Gender", patient["gender"]],
+    ]
+
+    table = Table(patient_data)
+    table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.black),
+    ]))
+
+    content.append(table)
+    content.append(Spacer(1, 15))
+
+    # Dose
+    content.append(Paragraph("<b>Radiation Dose Summary</b>", styles["Heading2"]))
+    content.append(Spacer(1, 10))
+
+    dose_color = "green"
+    if dose_level == "high":
+        dose_color = "red"
+    elif dose_level == "moderate":
+        dose_color = "orange"
+
+    content.append(Paragraph(f"Total Dose: {dose} mGy·cm", styles["Normal"]))
+    content.append(Paragraph(f"<font color='{dose_color}'>Risk Level: {dose_level.upper()}</font>", styles["Normal"]))
+    content.append(Spacer(1, 15))
+
+    # Scan table
+    content.append(Paragraph("<b>Scan Details</b>", styles["Heading2"]))
+    content.append(Spacer(1, 10))
+
+    scan_data = [["Scan", "CTDI", "DLP"]]
+
+    for i, s in enumerate(studies):
+        scan_data.append([f"{i+1}", str(s["ctdi"]), str(s["dlp"])])
+
+    scan_table = Table(scan_data)
+    scan_table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.black),
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+    ]))
+
+    content.append(scan_table)
+    content.append(Spacer(1, 15))
+
+    # Report
+    content.append(Paragraph("<b>Radiologist Report</b>", styles["Heading2"]))
+    content.append(Spacer(1, 10))
+
+    formatted_report = report_text.replace("\n", "<br/>")
+    content.append(Paragraph(formatted_report, styles["Normal"]))
+
+    doc.build(content)
+
+    return file_path
 # ================= HOME =================
 @app.route("/")
 def home():
@@ -685,48 +784,62 @@ def view(id):
     conn=get_db_connection()
     cur=conn.cursor()
 
+    p = None
+    report_text = None
+
+    # STEP 1: Save report
     if request.method=="POST" and session["role"]=="radiologist":
 
-       report_text = request.form["report"]
+        report_text = request.form["report"]
 
-       cur.execute("UPDATE patients SET report=%s,status='Reviewed' WHERE id=%s",
-                (report_text,id))
-       conn.commit()
+        cur.execute("UPDATE patients SET report=%s,status='Reviewed' WHERE id=%s",
+                    (report_text,id))
+        conn.commit()
 
-       # get patient email
-       cur.execute("SELECT email,name FROM patients WHERE id=%s",(id,))
-       p = cur.fetchone()
-       print("Patient email:", p["email"])
+        cur.execute("SELECT email,name FROM patients WHERE id=%s",(id,))
+        p = cur.fetchone()
 
+    # STEP 2: Fetch data
     cur.execute("SELECT * FROM patients WHERE id=%s",(id,))
     patient=cur.fetchone()
+
     cur.execute("""SELECT id, ctdi, dlp FROM studies WHERE patient_id=%s""",(id,))
     studies = cur.fetchall()
+
     cur.execute("SELECT SUM(dlp) as total_dose FROM studies WHERE patient_id=%s",(id,))
     dose_row = cur.fetchone()
-    dose = None
 
+    dose = None
     if dose_row and dose_row["total_dose"]:
         dose = float(dose_row["total_dose"])
-    print("DEBUG → Total Dose:", dose)    
-    # ADD THIS PART HERE
-    dose_level = "safe"
 
+    # STEP 3: Dose level
+    dose_level = "safe"
     if dose:
         if dose > 1000:
             dose_level = "high"
         elif dose > 500:
             dose_level = "moderate"
-    if request.method=="POST" and session["role"]=="radiologist":        
-       if p and p["email"]:
-           try:
-               send_report_email(p["email"], p["name"], report_text, dose, studies, dose_level)
-               print("Email sent to:", p["email"])
-           except Exception as e:
-               print("Email sending failed:", e)        
+
+    # STEP 4: Generate PDF + Email ONLY on POST
+    if request.method=="POST" and session["role"]=="radiologist":
+
+        pdf_path = generate_pdf(patient, report_text, dose, studies, dose_level)
+        print("PDF generated at:", pdf_path)
+
+        if p and p["email"]:
+            try:
+                send_report_email(
+                    p["email"], p["name"],
+                    report_text, dose, studies,
+                    dose_level, pdf_path
+                )
+                print("Email sent to:", p["email"])
+            except Exception as e:
+                print("Email sending failed:", e)
+
     cur.close()
     conn.close()
-
     return render_template_string("""
 <!DOCTYPE html>
 <html>
@@ -871,6 +984,9 @@ DLP: {{ s.dlp if s.dlp else "N/A" }}
 <button class="btn btn-success">Submit Report</button>
 
 </form>
+<a href="/download/{{ patient.id }}" class="btn btn-dark mt-2">
+📄 Download PDF Report
+</a>
 
 {% endif %}
 
@@ -947,6 +1063,46 @@ updateImage()
 @app.route("/health")
 def health():
     return "OK", 200
+
+from flask import send_file
+
+@app.route("/download/<int:id>")
+def download(id):
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Get patient
+    cur.execute("SELECT * FROM patients WHERE id=%s", (id,))
+    patient = cur.fetchone()
+
+    # Get studies
+    cur.execute("SELECT ctdi, dlp FROM studies WHERE patient_id=%s", (id,))
+    studies = cur.fetchall()
+
+    # Get total dose
+    cur.execute("SELECT SUM(dlp) as total_dose FROM studies WHERE patient_id=%s", (id,))
+    dose_row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    dose = None
+    if dose_row and dose_row["total_dose"]:
+        dose = float(dose_row["total_dose"])
+
+    # Dose classification
+    dose_level = "safe"
+    if dose:
+        if dose > 1000:
+            dose_level = "high"
+        elif dose > 500:
+            dose_level = "moderate"
+
+    # Generate PDF again (safe approach)
+    pdf_path = generate_pdf(patient, patient["report"], dose, studies, dose_level)
+
+    return send_file(pdf_path, as_attachment=True)
 
 @app.route("/logout")
 def logout():
