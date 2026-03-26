@@ -11,22 +11,13 @@ def download_model():
         print("Downloading model...")
         gdown.download(url, MODEL_PATH, quiet=False)
 
-model = None
+print("Initializing model...")
 
-def get_model():
-    global model
-    if model is None:
-        download_model()
-        model = load_model(MODEL_PATH)
-    return model
+download_model()   # 🔥 DOWNLOAD AT STARTUP
+model = load_model(MODEL_PATH)   # 🔥 LOAD AT STARTUP
+
+print("Model loaded successfully!")
 
 def detect_tumor(img):
-    model = get_model()
-    
-    # YOUR EXISTING PREPROCESSING HERE
-    # Example:
-    # img = preprocess(img)
-    
     prediction = model.predict(img)
-    
     return prediction
