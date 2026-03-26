@@ -1,24 +1,20 @@
-import cv2
 import numpy as np
+from tensorflow.keras.models import load_model
 
-def detect_tumor(image_array):
+# Load trained model
+model = load_model("tumor_model.h5")
 
-    # normalize
-    img = (image_array - image_array.min()) / (image_array.max() - image_array.min())
+# Class labels (same order as dataset folders)
+labels = ["glioma", "meningioma", "notumor", "pituitary"]
 
-    # convert to 0-255
-    img = (img * 255).astype(np.uint8)
+def detect_tumor(img_array):
+    # reshape to match model input
+    img = img_array.reshape(1, 128, 128, 1)
 
-    # blur to remove noise
-    img_blur = cv2.GaussianBlur(img, (5,5), 0)
+    # prediction
+    prediction = model.predict(img)
 
-    # threshold (bright tumor areas)
-    _, thresh = cv2.threshold(img_blur, 180, 255, cv2.THRESH_BINARY)
+    # get class
+    result = labels[np.argmax(prediction)]
 
-    # find contours
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    if len(contours) > 2:
-        return "Tumor Detected"
-    else:
-        return "No Tumor"
+    return result
