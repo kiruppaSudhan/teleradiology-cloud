@@ -21,3 +21,4 @@ sendgrid
 reportlab
 pandas
 scikit-learn
+tensorflow==2.12.0
