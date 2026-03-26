@@ -14,9 +14,19 @@ import base64
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
 from ml_model import predict_diabetes
-from tumor_model import detect_tumor
+
 
 app = Flask(__name__)
+@app.route("/")
+def home():
+    return "App is running"
+
+
+@app.route("/warmup")
+def warmup():
+    from tumor_model import get_model
+    get_model()
+    return "Model loaded"
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
 # ================= DATABASE =================
@@ -879,6 +889,7 @@ def view(id):
            arr = np.array(img) / 255.0   
 
            # AI prediction
+           from tumor_model import detect_tumor 
            tumor_result = detect_tumor(arr)
 
     except Exception as e:
