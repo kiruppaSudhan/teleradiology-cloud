@@ -21,4 +21,4 @@ sendgrid
 reportlab
 pandas
 scikit-learn
-tensorflow==2.12.0
+tensorflow-cpu==2.12.0
