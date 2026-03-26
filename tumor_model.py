@@ -1,20 +1,32 @@
-import numpy as np
+import os
+import gdown
 from tensorflow.keras.models import load_model
 
-# Load trained model
-model = load_model("tumor_model.h5")
+MODEL_PATH = "tumor_model.h5"
+FILE_ID = "1beRY6Pho2Rd_obnlxpL1oJTq3wKmm4iW"
 
-# Class labels (same order as dataset folders)
-labels = ["glioma", "meningioma", "notumor", "pituitary"]
+def download_model():
+    if not os.path.exists(MODEL_PATH):
+        url = f"https://drive.google.com/uc?id={FILE_ID}"
+        print("Downloading model...")
+        gdown.download(url, MODEL_PATH, quiet=False)
 
-def detect_tumor(img_array):
-    # reshape to match model input
-    img = img_array.reshape(1, 128, 128, 1)
+model = None
 
-    # prediction
+def get_model():
+    global model
+    if model is None:
+        download_model()
+        model = load_model(MODEL_PATH)
+    return model
+
+def detect_tumor(img):
+    model = get_model()
+    
+    # YOUR EXISTING PREPROCESSING HERE
+    # Example:
+    # img = preprocess(img)
+    
     prediction = model.predict(img)
-
-    # get class
-    result = labels[np.argmax(prediction)]
-
-    return result
+    
+    return prediction
