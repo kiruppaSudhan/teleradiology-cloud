@@ -800,8 +800,18 @@ def image(id):
         dicom_bytes=dicom_bytes.tobytes()
 
     ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
-    arr=ds.pixel_array.astype(float)
-    
+
+    # 🔥 FIX: add Transfer Syntax if missing
+    if not hasattr(ds, "file_meta") or not hasattr(ds.file_meta, "TransferSyntaxUID"):
+        from pydicom.uid import ImplicitVRLittleEndian
+        ds.file_meta = ds.file_meta if hasattr(ds, "file_meta") else pydicom.dataset.FileMetaDataset()
+        ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+
+    try:
+       arr = ds.pixel_array.astype(float)
+    except Exception as e:
+       print("Pixel read failed:", e)
+       return "Invalid DICOM", 400
     min_val = arr.min()
     max_val = arr.max()
 
@@ -869,21 +879,30 @@ def view(id):
            # convert memoryview → bytes
            if isinstance(data, memoryview):
               data = data.tobytes()
-
-           # read dicom
            ds = pydicom.dcmread(io.BytesIO(data), force=True)
 
-           # extract image
-           arr = ds.pixel_array.astype(float)
-
+           # 🔥 FIX HERE ALSO
+           if not hasattr(ds, "file_meta") or not hasattr(ds.file_meta, "TransferSyntaxUID"):
+               from pydicom.uid import ImplicitVRLittleEndian
+               ds.file_meta = ds.file_meta if hasattr(ds, "file_meta") else pydicom.dataset.FileMetaDataset()
+               ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+           try:
+               arr = ds.pixel_array.astype(float)
+           except Exception as e:
+               print("Pixel read failed:", e)
+               tumor_result = "Invalid DICOM"
+               arr = None   # 🔥 IMPORTANT
            # normalize safely
-           min_val = arr.min()
-           max_val = arr.max()
+           if arr is not None:
+              min_val = arr.min()
+              max_val = arr.max()
 
-           if max_val - min_val != 0:
-              arr = (arr - min_val) / (max_val - min_val)
-           else:
-              arr = arr * 0
+             if max_val - min_val != 0:
+                arr = (arr - min_val) / (max_val - min_val)
+             else:
+                arr = arr * 0
+
+           # continue processing...
 
            # ensure grayscale
            if len(arr.shape) == 3:
