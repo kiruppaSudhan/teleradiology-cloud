@@ -892,29 +892,29 @@ def view(id):
                print("Pixel read failed:", e)
                tumor_result = "Invalid DICOM"
                arr = None   # 🔥 IMPORTANT
-           # normalize safely
            if arr is not None:
+
+              # normalize safely
               min_val = arr.min()
               max_val = arr.max()
 
-             if max_val - min_val != 0:
-                arr = (arr - min_val) / (max_val - min_val)
-             else:
-                arr = arr * 0
+              if max_val - min_val != 0:
+                  arr = (arr - min_val) / (max_val - min_val)
+              else:
+                  arr = arr * 0
 
-           # continue processing...
+              # ensure grayscale
+              if len(arr.shape) == 3:
+                  arr = arr[:, :, 0]
 
-           # ensure grayscale
-           if len(arr.shape) == 3:
-              arr = arr[:, :, 0]
-           # resize for model
-           img = Image.fromarray((arr * 255).astype(np.uint8))
-           img = img.resize((128, 128))
-           arr = np.array(img) / 255.0   
+              # resize for model
+              img = Image.fromarray((arr * 255).astype(np.uint8))
+              img = img.resize((128, 128))
+              arr = np.array(img) / 255.0
 
-           # AI prediction
-           from tumor_model import detect_tumor 
-           tumor_result = detect_tumor(arr)
+              # AI prediction
+              from tumor_model import detect_tumor
+              tumor_result = detect_tumor(arr)
 
     except Exception as e:
        print("Tumor detection error:", e)
