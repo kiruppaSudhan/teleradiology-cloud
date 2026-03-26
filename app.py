@@ -14,6 +14,7 @@ import base64
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
 from ml_model import predict_diabetes
+from tumor_model import detect_tumor
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
@@ -791,6 +792,7 @@ def image(id):
 
     ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
     arr=ds.pixel_array.astype(float)
+    
     arr=(arr-arr.min())/(arr.max()-arr.min())
     arr=(arr*255).astype(np.uint8)
 
@@ -831,6 +833,57 @@ def view(id):
 
     cur.execute("""SELECT id, ctdi, dlp FROM studies WHERE patient_id=%s""",(id,))
     studies = cur.fetchall()
+
+    # ================= TUMOR DETECTION =================
+   
+
+    tumor_result = "Not Available"
+
+    try:
+        if studies:
+           # get first scan
+           cur.execute("SELECT dicom_data FROM studies WHERE id=%s", (studies[0]["id"],))
+           row = cur.fetchone()
+
+           if not row:
+              raise Exception("No DICOM data found")
+
+           data = row["dicom_data"]
+
+
+           # convert memoryview → bytes
+           if isinstance(data, memoryview):
+              data = data.tobytes()
+
+           # read dicom
+           ds = pydicom.dcmread(io.BytesIO(data), force=True)
+
+           # extract image
+           arr = ds.pixel_array.astype(float)
+
+           # normalize safely
+           min_val = arr.min()
+           max_val = arr.max()
+
+           if max_val - min_val != 0:
+              arr = (arr - min_val) / (max_val - min_val)
+           else:
+              arr = arr * 0
+
+           # ensure grayscale
+           if len(arr.shape) == 3:
+              arr = arr[:, :, 0]
+           # resize for model
+           img = Image.fromarray((arr * 255).astype(np.uint8))
+           img = img.resize((128, 128))
+           arr = np.array(img) / 255.0   
+
+           # AI prediction
+           tumor_result = detect_tumor(arr)
+
+    except Exception as e:
+       print("Tumor detection error:", e)
+       tumor_result = "Error in analysis"
 
     cur.execute("SELECT SUM(dlp) as total_dose FROM studies WHERE patient_id=%s",(id,))
     dose_row = cur.fetchone()
@@ -913,8 +966,11 @@ border:3px solid red;
 
 <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
 
-<h5>AI Prediction</h5>
-<p><b>Diabetes Risk:</b> {{ patient.diabetes_result }}</p>
+<h5>Patient Risk Assessment</h5>
+<p><b>Diabetes (clinical input):</b> {{ patient.diabetes_result }}</p>
+
+<h5>AI Imaging Analysis</h5>
+<p><b>Brain Tumor Detection:</b> {{ tumor_result }}</p>
 
 <p>Status: {{ patient.status }}</p>
 
@@ -1087,7 +1143,7 @@ updateImage()
 
 </html>
 
-""",patient=patient,studies=studies,role=session.get("role"),dose=dose,dose_level=dose_level)
+""",patient=patient,studies=studies,role=session.get("role"),dose=dose,dose_level=dose_level,tumor_result=tumor_result)
 
 @app.route("/health")
 def health():
