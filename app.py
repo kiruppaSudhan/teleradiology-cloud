@@ -17,9 +17,6 @@ from ml_model import predict_diabetes
 
 
 app = Flask(__name__)
-@app.route("/")
-def home():
-    return "App is running"
 
 
 @app.route("/warmup")
@@ -793,6 +790,8 @@ def image(id):
     cur=conn.cursor()
     cur.execute("SELECT dicom_data FROM studies WHERE id=%s",(id,))
     study=cur.fetchone()
+    if not study:
+       return "No image found", 404
     cur.close()
     conn.close()
 
@@ -803,7 +802,13 @@ def image(id):
     ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
     arr=ds.pixel_array.astype(float)
     
-    arr=(arr-arr.min())/(arr.max()-arr.min())
+    min_val = arr.min()
+    max_val = arr.max()
+
+    if max_val - min_val != 0:
+        arr = (arr - min_val) / (max_val - min_val)
+    else:
+        arr = arr * 0
     arr=(arr*255).astype(np.uint8)
 
     img=Image.fromarray(arr)
