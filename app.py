@@ -13,6 +13,7 @@ from sendgrid.helpers.mail import Attachment, FileContent, FileName, FileType, D
 import base64
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
+from ml_model import predict_diabetes
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
@@ -238,6 +239,7 @@ def init_db():
         temperature VARCHAR(20),
         spo2 VARCHAR(20),
         rr VARCHAR(20),
+        diabetes_result VARCHAR(50),
         status VARCHAR(50),
         report TEXT
     );
@@ -249,6 +251,11 @@ def init_db():
     ADD COLUMN IF NOT EXISTS email VARCHAR(150);
     """)
 
+    cur.execute("""
+    ALTER TABLE patients
+    ADD COLUMN IF NOT EXISTS diabetes_result VARCHAR(50);
+    """)
+    
     cur.execute("""
     CREATE TABLE IF NOT EXISTS studies (
         id SERIAL PRIMARY KEY,
@@ -568,6 +575,16 @@ box-shadow:0 10px 40px rgba(0,0,0,0.4);
 <input class="form-control" name="age">
 </div>
 
+<div class="col-md-4 mb-3">
+<label>Glucose</label>
+<input class="form-control" name="glucose" required>
+</div>
+
+<div class="col-md-4 mb-3">
+<label>BMI</label>
+<input class="form-control" name="bmi" required>
+</div>
+
 <div class="col-md-6 mb-3">
 <label>Gender</label>
 <input class="form-control" name="gender">
@@ -642,9 +659,16 @@ def add_patient():
     count=cur.fetchone()["count"]+1
     mrn=f"MRN{count:04d}"
 
+    glucose = float(request.form["glucose"])
+    bmi = float(request.form["bmi"])
+    age = float(request.form["age"])
+
+    diabetes_result = predict_diabetes(glucose, bmi, age)
+    print("Diabetes Prediction:", diabetes_result)
+
     cur.execute("""
-    INSERT INTO patients (mrn,name,age,gender,contact,email,bp,hr,temperature,spo2,rr,status,report)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Pending','')
+    INSERT INTO patients (mrn,name,age,gender,contact,email,bp,hr,temperature,spo2,rr,diabetes_result,status,report)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Pending','')
     RETURNING id
     """,(mrn,
      request.form["name"],
@@ -656,7 +680,8 @@ def add_patient():
      request.form["hr"],
      request.form["temperature"],
      request.form["spo2"],
-     request.form["rr"]))
+     request.form["rr"],
+     diabetes_result))
 
     patient_id=cur.fetchone()["id"]
     conn.commit()
@@ -785,7 +810,7 @@ def view(id):
     cur=conn.cursor()
 
     p = None
-    report_text = None
+
 
     # STEP 1: Save report
     if request.method=="POST" and session["role"]=="radiologist":
@@ -802,6 +827,7 @@ def view(id):
     # STEP 2: Fetch data
     cur.execute("SELECT * FROM patients WHERE id=%s",(id,))
     patient=cur.fetchone()
+    report_text = patient["report"]
 
     cur.execute("""SELECT id, ctdi, dlp FROM studies WHERE patient_id=%s""",(id,))
     studies = cur.fetchall()
@@ -886,6 +912,9 @@ border:3px solid red;
 <body class="container mt-4">
 
 <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
+
+<h5>AI Prediction</h5>
+<p><b>Diabetes Risk:</b> {{ patient.diabetes_result }}</p>
 
 <p>Status: {{ patient.status }}</p>
 
