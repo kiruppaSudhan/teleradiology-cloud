@@ -14,12 +14,15 @@ import base64
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
 from ml_model import predict_diabetes
-from tumor_model import get_model
+from tumor_model import get_model, download_model
 
-print("Preloading tumor model...")
-get_model()
-print("Model loaded successfully")
+print("Downloading tumor model...")
+download_model()   # 🔥 FIRST DOWNLOAD
 
+print("Loading tumor model...")
+get_model()        # 🔥 THEN LOAD
+
+print("Model ready")
 
 app = Flask(__name__)
 
