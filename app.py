@@ -16,14 +16,11 @@ from reportlab.lib import colors
 from ml_model import predict_diabetes
 from tumor_model import get_model, download_model
 
-print("Downloading tumor model...")
-download_model()   # 🔥 FIRST DOWNLOAD
+from tumor_model import get_model
 
-print("Loading tumor model...")
-get_model()        # 🔥 THEN LOAD
+print("Preloading tumor model...")
 
-print("Model ready")
-
+print("Model loaded successfully")
 app = Flask(__name__)
 
 
