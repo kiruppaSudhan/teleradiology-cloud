@@ -18,7 +18,7 @@ def get_model():
 
     if model is None:
         from tensorflow.keras.models import load_model
-        model = load_model(MODEL_PATH)
+        model = load_model(MODEL_PATH, compile=False)
 
     return model
 
