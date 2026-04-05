@@ -1,28 +1,38 @@
 import os
 import gdown
-from tensorflow.keras.models import load_model
+import numpy as np
 
 MODEL_PATH = "tumor_model.h5"
-FILE_ID = "1beRY6Pho2Rd_obnlxpL1oJTq3wKmm4iW"
+
+# 🔽 Download model if not present
+def download_model():
+    if not os.path.exists(MODEL_PATH):
+        print("Downloading tumor model...")
+        url = "https://drive.google.com/uc?id=1beRY6Pho2Rd_obnlxpL1oJTq3wKmm4iW"
+        gdown.download(url, MODEL_PATH, quiet=False)
 
 model = None
 
-def download_model():
-    if not os.path.exists(MODEL_PATH):
-        url = f"https://drive.google.com/uc?id={FILE_ID}"
-        print("Downloading model...")
-        gdown.download(url, MODEL_PATH, quiet=False)
-
 def get_model():
     global model
+
     if model is None:
+        download_model()   # 🔥 IMPORTANT
+        from tensorflow.keras.models import load_model
         print("Loading model...")
-        download_model()
         model = load_model(MODEL_PATH)
-        print("Model loaded!")
+
     return model
+
 
 def detect_tumor(img):
     model = get_model()
-    prediction = model.predict(img)
-    return prediction
+
+    pred = model.predict(img)
+
+    prob = float(pred[0][0])
+
+    if prob > 0.5:
+        return f"Tumor Detected ({prob:.2f})"
+    else:
+        return f"No Tumor ({1 - prob:.2f})"

@@ -917,8 +917,9 @@ def view(id):
               tumor_result = detect_tumor(arr)
 
     except Exception as e:
-       print("Tumor detection error:", e)
-       tumor_result = "Error in analysis"
+        import traceback
+        traceback.print_exc()
+        tumor_result = str(e)
 
     cur.execute("SELECT SUM(dlp) as total_dose FROM studies WHERE patient_id=%s",(id,))
     dose_row = cur.fetchone()
