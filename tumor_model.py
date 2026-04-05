@@ -17,13 +17,10 @@ def get_model():
     global model
 
     if model is None:
-        download_model()   # 🔥 IMPORTANT
         from tensorflow.keras.models import load_model
-        print("Loading model...")
         model = load_model(MODEL_PATH)
 
     return model
-
 
 def detect_tumor(img):
     model = get_model()
