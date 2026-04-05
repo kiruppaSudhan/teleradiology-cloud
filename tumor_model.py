@@ -1,6 +1,7 @@
 import os
 import gdown
 import numpy as np
+import tensorflow as tf
 
 MODEL_PATH = "tumor_model.h5"
 
@@ -17,8 +18,13 @@ def get_model():
     global model
 
     if model is None:
-        from tensorflow.keras.models import load_model
-        model = load_model(MODEL_PATH, compile=False)
+        print("Loading model in compatibility mode...")
+
+        model = tf.keras.models.load_model(
+            MODEL_PATH,
+            compile=False,
+            safe_mode=False   # 🔥 IMPORTANT FIX
+        )
 
     return model
 
