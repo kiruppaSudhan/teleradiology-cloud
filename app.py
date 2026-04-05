@@ -14,21 +14,13 @@ import base64
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
 from ml_model import predict_diabetes
-from tumor_model import get_model, download_model
+from tumor_model import download_model
 
-from tumor_model import get_model
-
-print("Preloading tumor model...")
-
-print("Model loaded successfully")
+print("App starting...")
 app = Flask(__name__)
 
 
-@app.route("/warmup")
-def warmup():
-    from tumor_model import get_model
-    get_model()
-    return "Model loaded"
+
 app.secret_key = os.environ.get("SECRET_KEY", "supersecretkey")
 
 # ================= DATABASE =================
