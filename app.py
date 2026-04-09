@@ -514,6 +514,9 @@ def dashboard():
 
 <br><br>
 <a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">Open Case</a>
+{% if role=='technician' %}
+<a href="/delete_patient/{{ p.id }}" class="btn btn-danger btn-sm" onclick="return confirm('Delete this patient?')">Delete</a>
+{% endif %}
 </div>
 </div>
 </div>
@@ -783,50 +786,46 @@ def upload_scan(id):
 # ================= IMAGE =================
 @app.route("/image/<int:id>")
 def image(id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT dicom_data FROM studies WHERE id=%s", (id,))
-    study = cur.fetchone()
+    conn=get_db_connection()
+    cur=conn.cursor()
+    cur.execute("SELECT dicom_data FROM studies WHERE id=%s",(id,))
+    study=cur.fetchone()
     if not study:
-        return "No image found", 404
+       return "No image found", 404
     cur.close()
     conn.close()
 
-    dicom_bytes = study["dicom_data"]
-    if isinstance(dicom_bytes, memoryview):
-        dicom_bytes = dicom_bytes.tobytes()
+    dicom_bytes=study["dicom_data"]
+    if isinstance(dicom_bytes,memoryview):
+        dicom_bytes=dicom_bytes.tobytes()
 
-    # Try JPG/PNG first
-    try:
-        img = Image.open(io.BytesIO(dicom_bytes)).convert("RGB")
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-        return buf.read(), 200, {"Content-Type": "image/png"}
-    except Exception:
-        pass
+    ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
 
-    # Fall back to DICOM
+    # 🔥 FIX: add Transfer Syntax if missing
+    if not hasattr(ds, "file_meta") or not hasattr(ds.file_meta, "TransferSyntaxUID"):
+        from pydicom.uid import ImplicitVRLittleEndian
+        ds.file_meta = ds.file_meta if hasattr(ds, "file_meta") else pydicom.dataset.FileMetaDataset()
+        ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+
     try:
-        ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
-        if not hasattr(ds, "file_meta") or not hasattr(ds.file_meta, "TransferSyntaxUID"):
-            from pydicom.uid import ImplicitVRLittleEndian
-            ds.file_meta = ds.file_meta if hasattr(ds, "file_meta") else pydicom.dataset.FileMetaDataset()
-            ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
-        arr = ds.pixel_array.astype(float)
-        min_val, max_val = arr.min(), arr.max()
-        if max_val - min_val != 0:
-            arr = (arr - min_val) / (max_val - min_val)
-        else:
-            arr = arr * 0
-        arr = (arr * 255).astype(np.uint8)
-        img = Image.fromarray(arr)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        buf.seek(0)
-        return buf.read(), 200, {"Content-Type": "image/png"}
+       arr = ds.pixel_array.astype(float)
     except Exception as e:
-        return f"Invalid image: {str(e)}", 400
+       print("Pixel read failed:", e)
+       return "Invalid DICOM", 400
+    min_val = arr.min()
+    max_val = arr.max()
+
+    if max_val - min_val != 0:
+        arr = (arr - min_val) / (max_val - min_val)
+    else:
+        arr = arr * 0
+    arr=(arr*255).astype(np.uint8)
+
+    img=Image.fromarray(arr)
+    buf=io.BytesIO()
+    img.save(buf,format="PNG")
+    buf.seek(0)
+    return buf.read(),200,{"Content-Type":"image/png"}
 
 # ================= VIEW =================
 @app.route("/view/<int:id>",methods=["GET","POST"])
@@ -1221,9 +1220,23 @@ def download(id):
 
     return send_file(pdf_path, as_attachment=True)
 
-@app.route("/logout")
+@app.route("/delete_patient/<int:id>")
+def delete_patient(id):
+    if session.get("role") != "technician":
+        return "Unauthorized"
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM patients WHERE id=%s", (id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+    return redirect("/dashboard")
+
+
+
+@app.route('/logout')
 def logout():
     session.clear()
-    return redirect("/")
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    return redirect('/')
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
