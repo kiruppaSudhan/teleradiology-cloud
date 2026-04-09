@@ -904,8 +904,8 @@ def view(id):
                    arr = np.array(img) / 255.0
                    tumor_result = detect_tumor(arr)
 
-              except Exception as e2:
-                  tumor_result = f"Could not read scan: {str(e2)}"
+               except Exception as e2:
+                   tumor_result = f"Could not read scan: {str(e2)}"
 
     except Exception as e:
         import traceback
