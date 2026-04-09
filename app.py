@@ -100,83 +100,265 @@ def send_report_email(to_email, patient_name, report_text, dose, studies, dose_l
 
 
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, KeepTogether
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.platypus import Canvas
+from reportlab.lib import colors
+import datetime
+
+# Brand colors
+DARK_BLUE  = colors.HexColor("#0D2B4E")
+MID_BLUE   = colors.HexColor("#1A5276")
+LIGHT_BLUE = colors.HexColor("#D6EAF8")
+RED_COLOR  = colors.HexColor("#C0392B")
+ORANGE     = colors.HexColor("#D35400")
+GREEN      = colors.HexColor("#1E8449")
+GRAY_BG    = colors.HexColor("#F2F3F4")
+GRAY_TEXT  = colors.HexColor("#555555")
+WHITE      = colors.white
 
 def generate_pdf(patient, report_text, dose, studies, dose_level):
-
     file_path = f"/tmp/report_{patient['id']}.pdf"
+    W, H = A4
 
-    doc = SimpleDocTemplate(file_path, pagesize=A4)
-    styles = getSampleStyleSheet()
+    from reportlab.pdfgen import canvas as pdfcanvas
+    from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
+
+    # ── page callback: header + footer on every page ──
+    def draw_header_footer(canvas, doc):
+        canvas.saveState()
+
+        # Header bar
+        canvas.setFillColor(DARK_BLUE)
+        canvas.rect(0, H - 60, W, 60, fill=1, stroke=0)
+
+        # Hospital name
+        canvas.setFillColor(WHITE)
+        canvas.setFont("Helvetica-Bold", 16)
+        canvas.drawString(20*mm, H - 30, "Tele-Radiology System")
+        canvas.setFont("Helvetica", 9)
+        canvas.drawString(20*mm, H - 45, "AI-Assisted Radiology Reporting Platform")
+
+        # Report ID top-right
+        canvas.setFont("Helvetica", 8)
+        canvas.drawRightString(W - 20*mm, H - 28, f"Report ID: RPT-{patient['id']:04d}")
+        canvas.drawRightString(W - 20*mm, H - 40, f"MRN: {patient['mrn']}")
+
+        # Footer bar
+        canvas.setFillColor(DARK_BLUE)
+        canvas.rect(0, 0, W, 20*mm, fill=1, stroke=0)
+        canvas.setFillColor(WHITE)
+        canvas.setFont("Helvetica", 8)
+        today = datetime.datetime.now().strftime("%d %B %Y, %I:%M %p")
+        canvas.drawString(20*mm, 12*mm, f"Generated: {today}")
+        canvas.drawCentredString(W/2, 12*mm, "CONFIDENTIAL — For Authorized Medical Personnel Only")
+        canvas.drawRightString(W - 20*mm, 12*mm, f"Page {doc.page}")
+
+        canvas.restoreState()
+
+    doc = BaseDocTemplate(
+        file_path,
+        pagesize=A4,
+        leftMargin=20*mm,
+        rightMargin=20*mm,
+        topMargin=70,
+        bottomMargin=60,
+    )
+
+    frame = Frame(
+        doc.leftMargin, doc.bottomMargin,
+        W - doc.leftMargin - doc.rightMargin,
+        H - doc.topMargin - doc.bottomMargin,
+        id='main'
+    )
+    template = PageTemplate(id='main', frames=[frame], onPage=draw_header_footer)
+    doc.addPageTemplates([template])
+
+    # ── Styles ──
+    def make_style(name, font="Helvetica", size=10, color=colors.black,
+                   bold=False, align=TA_LEFT, space_before=4, space_after=4, leading=14):
+        return ParagraphStyle(
+            name,
+            fontName="Helvetica-Bold" if bold else font,
+            fontSize=size,
+            textColor=color,
+            alignment=align,
+            spaceBefore=space_before,
+            spaceAfter=space_after,
+            leading=leading,
+        )
+
+    s_section  = make_style("section",  size=11, color=WHITE,       bold=True, space_before=0, space_after=0)
+    s_label    = make_style("label",    size=9,  color=GRAY_TEXT,   bold=True)
+    s_value    = make_style("value",    size=10, color=colors.black)
+    s_normal   = make_style("normal",   size=10, color=colors.black, leading=16)
+    s_small    = make_style("small",    size=8,  color=GRAY_TEXT)
+    s_warning  = make_style("warning",  size=11, color=RED_COLOR,   bold=True, align=TA_CENTER)
+
+    def section_header(title):
+        """Dark blue bar with white title text."""
+        tbl = Table([[Paragraph(title, s_section)]], colWidths=[W - 40*mm])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,-1), MID_BLUE),
+            ("TOPPADDING",    (0,0), (-1,-1), 6),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+            ("LEFTPADDING",   (0,0), (-1,-1), 8),
+        ]))
+        return tbl
+
+    def info_row(label, value):
+        return [Paragraph(label, s_label), Paragraph(str(value) if value else "—", s_value)]
 
     content = []
 
-    # Title
-    content.append(Paragraph("<b>Tele-Radiology Report</b>", styles["Title"]))
-    content.append(Spacer(1, 10))
+    # ── 1. Patient Details ──
+    content.append(Spacer(1, 6))
+    content.append(section_header("1.  Patient Information"))
+    content.append(Spacer(1, 6))
 
-    # Patient Info
-    content.append(Paragraph("<b>Patient Details</b>", styles["Heading2"]))
-    content.append(Spacer(1, 10))
-
-    patient_data = [
-        ["Name", patient["name"]],
-        ["MRN", patient["mrn"]],
-        ["Age", patient["age"]],
-        ["Gender", patient["gender"]],
+    patient_rows = [
+        info_row("Full Name",       patient.get("name", "—")),
+        info_row("MRN",             patient.get("mrn",  "—")),
+        info_row("Age",             patient.get("age",  "—")),
+        info_row("Gender",          patient.get("gender", "—")),
+        info_row("Contact",         patient.get("contact", "—")),
+        info_row("Email",           patient.get("email", "—")),
     ]
 
-    table = Table(patient_data)
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 1, colors.black),
+    pt = Table(patient_rows, colWidths=[50*mm, W - 40*mm - 50*mm])
+    pt.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (0,-1), GRAY_BG),
+        ("GRID",       (0,0), (-1,-1), 0.4, colors.HexColor("#CCCCCC")),
+        ("TOPPADDING",    (0,0), (-1,-1), 5),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        ("LEFTPADDING",   (0,0), (-1,-1), 8),
+        ("ROWBACKGROUNDS", (0,0), (-1,-1), [WHITE, GRAY_BG]),
     ]))
-
-    content.append(table)
-    content.append(Spacer(1, 15))
-
-    # Dose
-    content.append(Paragraph("<b>Radiation Dose Summary</b>", styles["Heading2"]))
+    content.append(pt)
     content.append(Spacer(1, 10))
 
-    dose_color = "green"
+    # ── 2. Clinical Vitals ──
+    content.append(section_header("2.  Clinical Vitals"))
+    content.append(Spacer(1, 6))
+
+    vitals_rows = [
+        info_row("Blood Pressure",     patient.get("bp", "—")),
+        info_row("Heart Rate",         patient.get("hr", "—")),
+        info_row("Temperature (°F)",   patient.get("temperature", "—")),
+        info_row("SpO2 (%)",           patient.get("spo2", "—")),
+        info_row("Respiratory Rate",   patient.get("rr", "—")),
+        info_row("Diabetes (AI)",      patient.get("diabetes_result", "—")),
+    ]
+
+    vt = Table(vitals_rows, colWidths=[50*mm, W - 40*mm - 50*mm])
+    vt.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (0,-1), GRAY_BG),
+        ("GRID",       (0,0), (-1,-1), 0.4, colors.HexColor("#CCCCCC")),
+        ("TOPPADDING",    (0,0), (-1,-1), 5),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        ("LEFTPADDING",   (0,0), (-1,-1), 8),
+        ("ROWBACKGROUNDS", (0,0), (-1,-1), [WHITE, GRAY_BG]),
+    ]))
+    content.append(vt)
+    content.append(Spacer(1, 10))
+
+    # ── 3. Radiation Dose ──
+    content.append(section_header("3.  Radiation Dose Summary"))
+    content.append(Spacer(1, 6))
+
+    dose_val  = f"{dose} mGy·cm" if dose else "Not Available"
+    risk_color = RED_COLOR if dose_level == "high" else (ORANGE if dose_level == "moderate" else GREEN)
+    risk_label = dose_level.upper()
+
+    dose_summary = Table([
+        [Paragraph("Total Dose", s_label),     Paragraph(dose_val, s_value),
+         Paragraph("Risk Level", s_label),     Paragraph(f'<font color="#{risk_color.hexval()[2:]}"><b>{risk_label}</b></font>', s_value)],
+    ], colWidths=[35*mm, 55*mm, 35*mm, 45*mm])
+    dose_summary.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), LIGHT_BLUE),
+        ("GRID",       (0,0), (-1,-1), 0.4, colors.HexColor("#AAAAAA")),
+        ("TOPPADDING",    (0,0), (-1,-1), 8),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ("LEFTPADDING",   (0,0), (-1,-1), 8),
+        ("ROUNDEDCORNERS", [4]),
+    ]))
+    content.append(dose_summary)
+    content.append(Spacer(1, 8))
+
     if dose_level == "high":
-        dose_color = "red"
+        content.append(Paragraph("⚠  HIGH RADIATION DOSE — Immediate clinical review required.", s_warning))
     elif dose_level == "moderate":
-        dose_color = "orange"
+        content.append(Paragraph("⚠  Moderate radiation dose — Monitor patient exposure carefully.", s_warning))
 
-    content.append(Paragraph(f"Total Dose: {dose} mGy·cm", styles["Normal"]))
-    content.append(Paragraph(f"<font color='{dose_color}'>Risk Level: {dose_level.upper()}</font>", styles["Normal"]))
-    content.append(Spacer(1, 15))
-
-    # Scan table
-    content.append(Paragraph("<b>Scan Details</b>", styles["Heading2"]))
     content.append(Spacer(1, 10))
 
-    scan_data = [["Scan", "CTDI", "DLP"]]
+    # ── 4. Scan Details ──
+    content.append(section_header("4.  Scan Details"))
+    content.append(Spacer(1, 6))
 
+    scan_header = [
+        Paragraph("Scan #",    make_style("sh", bold=True, size=9, color=WHITE)),
+        Paragraph("CTDI (mGy)", make_style("sh", bold=True, size=9, color=WHITE)),
+        Paragraph("DLP (mGy·cm)", make_style("sh", bold=True, size=9, color=WHITE)),
+        Paragraph("File Name", make_style("sh", bold=True, size=9, color=WHITE)),
+    ]
+    scan_rows = [scan_header]
     for i, s in enumerate(studies):
-        scan_data.append([f"{i+1}", str(s["ctdi"]), str(s["dlp"])])
+        scan_rows.append([
+            Paragraph(str(i+1), s_value),
+            Paragraph(str(s["ctdi"]) if s["ctdi"] else "—", s_value),
+            Paragraph(str(s["dlp"])  if s["dlp"]  else "—", s_value),
+            Paragraph(str(s.get("file_name", "—")), s_small),
+        ])
 
-    scan_table = Table(scan_data)
-    scan_table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 1, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+    st = Table(scan_rows, colWidths=[20*mm, 35*mm, 40*mm, W - 40*mm - 95*mm])
+    st.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,0), MID_BLUE),
+        ("TEXTCOLOR",     (0,0), (-1,0), WHITE),
+        ("GRID",          (0,0), (-1,-1), 0.4, colors.HexColor("#CCCCCC")),
+        ("ROWBACKGROUNDS",(0,1), (-1,-1), [WHITE, GRAY_BG]),
+        ("TOPPADDING",    (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("LEFTPADDING",   (0,0), (-1,-1), 8),
+        ("ALIGN",         (0,0), (-1,-1), "LEFT"),
     ]))
-
-    content.append(scan_table)
-    content.append(Spacer(1, 15))
-
-    # Report
-    content.append(Paragraph("<b>Radiologist Report</b>", styles["Heading2"]))
+    content.append(st)
     content.append(Spacer(1, 10))
 
-    formatted_report = report_text.replace("\n", "<br/>")
-    content.append(Paragraph(formatted_report, styles["Normal"]))
+    # ── 5. Radiologist Report ──
+    content.append(section_header("5.  Radiologist Findings & Report"))
+    content.append(Spacer(1, 8))
+
+    report_box_text = report_text.replace("\n", "<br/>") if report_text else "No report submitted yet."
+    report_para = Paragraph(report_box_text, s_normal)
+
+    report_table = Table([[report_para]], colWidths=[W - 40*mm])
+    report_table.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,-1), GRAY_BG),
+        ("BOX",           (0,0), (-1,-1), 0.8, MID_BLUE),
+        ("TOPPADDING",    (0,0), (-1,-1), 12),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 12),
+        ("LEFTPADDING",   (0,0), (-1,-1), 12),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 12),
+    ]))
+    content.append(report_table)
+    content.append(Spacer(1, 16))
+
+    # ── 6. Signature line ──
+    sig = Table([
+        [Paragraph("Radiologist Signature", s_label), Paragraph("Date", s_label)],
+        [Paragraph("_______________________________", s_normal), Paragraph(datetime.datetime.now().strftime("%d / %m / %Y"), s_normal)],
+    ], colWidths=[100*mm, W - 40*mm - 100*mm])
+    sig.setStyle(TableStyle([
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+    ]))
+    content.append(sig)
 
     doc.build(content)
-
     return file_path
 # ================= HOME =================
 @app.route("/")
