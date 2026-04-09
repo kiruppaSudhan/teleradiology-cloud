@@ -906,7 +906,7 @@ def view(id):
 
               # resize for model
               img = Image.fromarray((arr * 255).astype(np.uint8))
-              img = img.resize((128, 128))
+              img = img.resize((224, 224))
               arr = np.array(img) / 255.0
 
               # AI prediction

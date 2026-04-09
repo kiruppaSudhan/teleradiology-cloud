@@ -1,9 +1,19 @@
-from tensorflow.keras.models import load_model
+import tensorflow as tf
 
-print("Loading old model...")
-model = load_model("tumor_model.h5", compile=False)
+print("⚡ Loading model safely...")
 
-print("Saving fixed model...")
-model.save("tumor_model_fixed.h5")
+model = tf.keras.models.load_model(
+    "tumor_model.h5",
+    compile=False
+)
 
-print("Done ✅")
+print("⚡ Cloning model (fixing compatibility)...")
+
+new_model = tf.keras.models.clone_model(model)
+new_model.set_weights(model.get_weights())
+
+print("⚡ Saving fixed model...")
+
+new_model.save("fixed_model.h5")
+
+print("✅ DONE — Model fixed successfully")
