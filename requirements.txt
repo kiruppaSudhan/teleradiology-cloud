@@ -18,5 +18,5 @@ sendgrid
 reportlab
 pandas==1.5.3
 scikit-learn==1.2.2
-tensorflow==2.15.0
+tflite-runtime==2.14.0
 gdown

@@ -1,46 +1,52 @@
 import numpy as np
-from tensorflow.keras.models import load_model
-from PIL import Image
-import io
+import os
 
-CLASSES = ['Glioma Tumor', 'Meningioma Tumor', 'No Tumor', 'Pituitary Tumor']
-_model = None
+# ── Lazy-load: model is loaded once on first request, NOT at import time ──
+_interpreter = None
 
-def get_model():
-    global _model
-    if _model is None:
-        _model = load_model('tumor_model.h5')
-    return _model
+def _get_interpreter():
+    global _interpreter
+    if _interpreter is None:
+        try:
+            # Try tflite-runtime first (lightest, recommended for Render)
+            from tflite_runtime.interpreter import Interpreter
+        except ImportError:
+            # Fall back to TFLite from full tensorflow if tflite-runtime not installed
+            import tensorflow as tf
+            Interpreter = tf.lite.Interpreter
 
-def detect_tumor(arr):
+        model_path = os.path.join(os.path.dirname(__file__), "tumor_model.tflite")
+        _interpreter = Interpreter(model_path=model_path)
+        _interpreter.allocate_tensors()
+        print("TFLite model loaded.")
+    return _interpreter
+
+
+def detect_tumor(arr: np.ndarray) -> str:
     """
-    arr: numpy array of shape (224,224) or (224,224,3), values 0-1
-    Returns: string like "Glioma Tumor (94.2% confidence)"
+    arr: float32 numpy array of shape (224, 224, 3), values in [0, 1]
+    Returns: 'Tumor Detected' | 'No Tumor' | error string
     """
     try:
-        model = get_model()
-        
-        # Ensure RGB (3 channels)
-        if len(arr.shape) == 2:
-            arr = np.stack([arr, arr, arr], axis=-1)
-        elif arr.shape[-1] == 1:
-            arr = np.concatenate([arr, arr, arr], axis=-1)
-        
-        # Resize to 224x224 if needed
-        if arr.shape[:2] != (224, 224):
-            img = Image.fromarray((arr * 255).astype(np.uint8))
-            img = img.resize((224, 224))
-            arr = np.array(img) / 255.0
-        
-        # Predict
-        inp = np.expand_dims(arr, axis=0)  # (1, 224, 224, 3)
-        preds = model.predict(inp, verbose=0)[0]
-        
-        idx = np.argmax(preds)
-        label = CLASSES[idx]
-        confidence = preds[idx] * 100
-        
-        return f"{label} ({confidence:.1f}% confidence)"
-    
+        interpreter = _get_interpreter()
+
+        input_details  = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+
+        # Prepare input tensor
+        img = arr.astype(np.float32)
+        if img.ndim == 2:                        # grayscale → RGB
+            img = np.stack([img, img, img], axis=-1)
+        img = np.expand_dims(img, axis=0)        # (1, 224, 224, 3)
+
+        interpreter.set_tensor(input_details[0]['index'], img)
+        interpreter.invoke()
+
+        output = interpreter.get_tensor(output_details[0]['index'])
+        score  = float(output[0][0])             # sigmoid output
+
+        return "Tumor Detected" if score > 0.5 else "No Tumor"
+
     except Exception as e:
-        return f"Detection error: {str(e)}"
+        print("Tumor detection error:", e)
+        return f"Detection failed: {str(e)}"
