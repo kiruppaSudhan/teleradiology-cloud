@@ -997,7 +997,7 @@ border:3px solid red;
 
 </head>
 
-<body class="container-fluid mt-4" style="max-width:1200px;">
+<body class="container mt-4">
 
 <h3>{{ patient.name }} ({{ patient.mrn }})</h3>
 
@@ -1107,14 +1107,22 @@ DLP: {{ s.dlp if s.dlp else "N/A" }}
 
 </div>
 
-{% if role=='radiologist' %}
-<div class="mt-4 p-4" style="background:#e8f5e9; border:2px solid #198754; border-radius:10px; width:100%;">
-<h5 class="text-success">✏️ Write Radiology Report</h5>
+<!-- DEBUG role=[{{ role }}] --> {% if role and 'radiologist' in role %}
+<div class="mt-4 p-4" style="background:#f5f5f5; border-radius:10px;">
+<h5>Radiology Report</h5>
+
 <form method="post">
-<textarea name="report" rows="10" class="form-control mb-3">{{ patient.report }}</textarea>
-<button class="btn btn-success">✅ Submit Report</button>
+
+<textarea name="report" rows="10" class="form-control">{{ patient.report }}</textarea>
+
+<br>
+
+<button class="btn btn-success">Submit Report</button>
+
 </form>
-<a href="/download/{{ patient.id }}" class="btn btn-dark mt-2">📄 Download PDF Report</a>
+<a href="/download/{{ patient.id }}" class="btn btn-dark mt-2">
+📄 Download PDF Report
+</a>
 </div>
 {% endif %}
 
