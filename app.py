@@ -783,46 +783,50 @@ def upload_scan(id):
 # ================= IMAGE =================
 @app.route("/image/<int:id>")
 def image(id):
-    conn=get_db_connection()
-    cur=conn.cursor()
-    cur.execute("SELECT dicom_data FROM studies WHERE id=%s",(id,))
-    study=cur.fetchone()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT dicom_data FROM studies WHERE id=%s", (id,))
+    study = cur.fetchone()
     if not study:
-       return "No image found", 404
+        return "No image found", 404
     cur.close()
     conn.close()
 
-    dicom_bytes=study["dicom_data"]
-    if isinstance(dicom_bytes,memoryview):
-        dicom_bytes=dicom_bytes.tobytes()
+    dicom_bytes = study["dicom_data"]
+    if isinstance(dicom_bytes, memoryview):
+        dicom_bytes = dicom_bytes.tobytes()
 
-    ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
-
-    # 🔥 FIX: add Transfer Syntax if missing
-    if not hasattr(ds, "file_meta") or not hasattr(ds.file_meta, "TransferSyntaxUID"):
-        from pydicom.uid import ImplicitVRLittleEndian
-        ds.file_meta = ds.file_meta if hasattr(ds, "file_meta") else pydicom.dataset.FileMetaDataset()
-        ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
-
+    # Try JPG/PNG first
     try:
-       arr = ds.pixel_array.astype(float)
+        img = Image.open(io.BytesIO(dicom_bytes)).convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        return buf.read(), 200, {"Content-Type": "image/png"}
+    except Exception:
+        pass
+
+    # Fall back to DICOM
+    try:
+        ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
+        if not hasattr(ds, "file_meta") or not hasattr(ds.file_meta, "TransferSyntaxUID"):
+            from pydicom.uid import ImplicitVRLittleEndian
+            ds.file_meta = ds.file_meta if hasattr(ds, "file_meta") else pydicom.dataset.FileMetaDataset()
+            ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+        arr = ds.pixel_array.astype(float)
+        min_val, max_val = arr.min(), arr.max()
+        if max_val - min_val != 0:
+            arr = (arr - min_val) / (max_val - min_val)
+        else:
+            arr = arr * 0
+        arr = (arr * 255).astype(np.uint8)
+        img = Image.fromarray(arr)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        return buf.read(), 200, {"Content-Type": "image/png"}
     except Exception as e:
-       print("Pixel read failed:", e)
-       return "Invalid DICOM", 400
-    min_val = arr.min()
-    max_val = arr.max()
-
-    if max_val - min_val != 0:
-        arr = (arr - min_val) / (max_val - min_val)
-    else:
-        arr = arr * 0
-    arr=(arr*255).astype(np.uint8)
-
-    img=Image.fromarray(arr)
-    buf=io.BytesIO()
-    img.save(buf,format="PNG")
-    buf.seek(0)
-    return buf.read(),200,{"Content-Type":"image/png"}
+        return f"Invalid image: {str(e)}", 400
 
 # ================= VIEW =================
 @app.route("/view/<int:id>",methods=["GET","POST"])
