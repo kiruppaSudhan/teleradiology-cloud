@@ -858,65 +858,60 @@ def view(id):
 
     # ================= TUMOR DETECTION =================
    
-
     tumor_result = "Not Available"
 
     try:
-        if studies:
-           # get first scan
+       if studies:
            cur.execute("SELECT dicom_data FROM studies WHERE id=%s", (studies[0]["id"],))
            row = cur.fetchone()
 
            if not row:
-              raise Exception("No DICOM data found")
+               raise Exception("No scan data found")
 
            data = row["dicom_data"]
-
-
-           # convert memoryview → bytes
            if isinstance(data, memoryview):
-              data = data.tobytes()
-           ds = pydicom.dcmread(io.BytesIO(data), force=True)
+               data = data.tobytes()
 
-           # 🔥 FIX HERE ALSO
-           if not hasattr(ds, "file_meta") or not hasattr(ds.file_meta, "TransferSyntaxUID"):
-               from pydicom.uid import ImplicitVRLittleEndian
-               ds.file_meta = ds.file_meta if hasattr(ds, "file_meta") else pydicom.dataset.FileMetaDataset()
-               ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
+           from tumor_model import detect_tumor
+
+           # Try JPG/PNG first (most common for demo)
            try:
-               arr = ds.pixel_array.astype(float)
-           except Exception as e:
-               print("Pixel read failed:", e)
-               tumor_result = "Invalid DICOM"
-               arr = None   # 🔥 IMPORTANT
-           if arr is not None:
+               img = Image.open(io.BytesIO(data)).convert('RGB')
+               img = img.resize((224, 224))
+               arr = np.array(img) / 255.0
+               tumor_result = detect_tumor(arr)
 
-              # normalize safely
-              min_val = arr.min()
-              max_val = arr.max()
+           except Exception:
+               # Fall back to DICOM
+               try:
+                   ds = pydicom.dcmread(io.BytesIO(data), force=True)
+                   if not hasattr(ds, "file_meta") or not hasattr(ds.file_meta, "TransferSyntaxUID"):
+                       from pydicom.uid import ImplicitVRLittleEndian
+                       ds.file_meta = ds.file_meta if hasattr(ds, "file_meta") else pydicom.dataset.FileMetaDataset()
+                       ds.file_meta.TransferSyntaxUID = ImplicitVRLittleEndian
 
-              if max_val - min_val != 0:
-                  arr = (arr - min_val) / (max_val - min_val)
-              else:
-                  arr = arr * 0
+                   arr = ds.pixel_array.astype(float)
+                   min_val = arr.min()
+                   max_val = arr.max()
+                   if max_val - min_val != 0:
+                       arr = (arr - min_val) / (max_val - min_val)
+                   else:
+                       arr = arr * 0
+                   if len(arr.shape) == 3:
+                       arr = arr[:, :, 0]
+                   img = Image.fromarray((arr * 255).astype(np.uint8))
+                   img = img.resize((224, 224))
+                   arr = np.array(img) / 255.0
+                   tumor_result = detect_tumor(arr)
 
-              # ensure grayscale
-              if len(arr.shape) == 3:
-                  arr = arr[:, :, 0]
-
-              # resize for model
-              img = Image.fromarray((arr * 255).astype(np.uint8))
-              img = img.resize((224, 224))
-              arr = np.array(img) / 255.0
-
-              # AI prediction
-              from tumor_model import detect_tumor
-              tumor_result = detect_tumor(arr)
+              except Exception as e2:
+                  tumor_result = f"Could not read scan: {str(e2)}"
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         tumor_result = str(e)
+    
 
     cur.execute("SELECT SUM(dlp) as total_dose FROM studies WHERE patient_id=%s",(id,))
     dose_row = cur.fetchone()
