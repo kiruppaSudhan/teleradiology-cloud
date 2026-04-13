@@ -982,7 +982,7 @@ def view(id):
     patient=cur.fetchone()
     report_text = patient["report"]
 
-    cur.execute("""SELECT id, ctdi, dlp FROM studies WHERE patient_id=%s""",(id,))
+    cur.execute("""SELECT id, ctdi, dlp, annotation_data FROM studies WHERE patient_id=%s""",(id,))
     studies = cur.fetchall()
 
     # ================= TUMOR DETECTION =================
@@ -1192,13 +1192,30 @@ border:3px solid red;
 
 {% for s in studies %}
 
-<div style="margin-bottom:20px; display:inline-block;">
+<div style="margin-bottom:20px; display:inline-block; position:relative;">
 
-<img src="/image/{{ s.id }}" 
-     class="scan-img dicom-image"
-     id="scan-{{ s.id }}"
-     data-study-id="{{ s.id }}"
-     onclick="selectImage(this); openAnnotation(this, '{{ s.id }}')">
+{% if s.annotation_data %}
+  {# Always show the annotated image if it exists #}
+  <img src="{{ s.annotation_data }}"
+       class="scan-img dicom-image"
+       id="scan-{{ s.id }}"
+       data-study-id="{{ s.id }}"
+       style="border:2px solid #00ff88;"
+       {% if role == 'radiologist' %}
+       onclick="selectImage(this); openAnnotationFromData(this, '{{ s.id }}', '{{ s.annotation_data }}')"
+       title="Click to re-annotate"
+       {% endif %}>
+  <div style="position:absolute; top:4px; left:4px; background:#00ff88; color:#000; font-size:10px; padding:2px 6px; border-radius:4px; font-weight:bold;">✔ Annotated</div>
+{% else %}
+  <img src="/image/{{ s.id }}"
+       class="scan-img dicom-image"
+       id="scan-{{ s.id }}"
+       data-study-id="{{ s.id }}"
+       {% if role == 'radiologist' %}
+       onclick="selectImage(this); openAnnotation(this, '{{ s.id }}')"
+       title="Click to annotate"
+       {% endif %}>
+{% endif %}
 
 <br>
 
@@ -1300,13 +1317,13 @@ updateImage()
 
 
 <!-- ===== ANNOTATION MODAL ===== -->
-<div id="annotationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:flex-start; overflow-y:auto; padding:20px; box-sizing:border-box;">
-  <div style="background:#1a1a2e; border-radius:15px; padding:20px; width:90%; max-width:750px; margin:auto; position:relative; box-sizing:border-box;">
+<div id="annotationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center;">
+  <div style="background:#1a1a2e; border-radius:15px; padding:20px; width:90%; max-width:750px; position:relative;">
     
     <h5 style="color:white;">🖊️ Annotate Scan — Draw ellipse around tumor region</h5>
     
-    <div style="position:relative; width:100%; display:flex; justify-content:center;">
-      <canvas id="annotationCanvas" style="border:2px solid #00ff88; border-radius:8px; cursor:crosshair; max-width:100%; max-height:60vh; display:block;"></canvas>
+    <div style="position:relative; display:inline-block; width:100%;">
+      <canvas id="annotationCanvas" style="border:2px solid #00ff88; border-radius:8px; cursor:crosshair; width:100%; display:block;"></canvas>
     </div>
 
     <br>
@@ -1334,14 +1351,14 @@ let baseImage = null;
 let ellipses = [];
 let currentEllipse = null;
 
-function openAnnotation(imgEl, studyId) {
+function openAnnotationFromData(imgEl, studyId, dataUrl) {
+  // Load the already-annotated image back into the canvas for re-editing
   annotationStudyId = studyId;
   canvas = document.getElementById("annotationCanvas");
   ctx = canvas.getContext("2d");
   document.getElementById("annotationModal").style.display = "flex";
   document.getElementById("annotationStatus").innerText = "";
 
-  // Load image onto canvas — scale to fit max display size
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.onload = function() {
@@ -1350,6 +1367,26 @@ function openAnnotation(imgEl, studyId) {
     const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
     canvas.width  = Math.round(img.naturalWidth  * scale);
     canvas.height = Math.round(img.naturalHeight * scale);
+    baseImage = img;
+    ellipses = [];
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  };
+  img.src = dataUrl;
+}
+
+function openAnnotation(imgEl, studyId) {
+  annotationStudyId = studyId;
+  canvas = document.getElementById("annotationCanvas");
+  ctx = canvas.getContext("2d");
+  document.getElementById("annotationModal").style.display = "flex";
+  document.getElementById("annotationStatus").innerText = "";
+
+  // Load image onto canvas
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = function() {
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
     baseImage = img;
     ellipses = [];
     redraw();
@@ -1446,8 +1483,33 @@ function closeAnnotation() {
 }
 
 function saveAnnotation() {
-  const dataURL = canvas.toDataURL("image/png");
   document.getElementById("annotationStatus").innerText = "Saving & emailing...";
+
+  // Draw at full natural resolution so ellipses are visible in email
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width  = baseImage.naturalWidth;
+  exportCanvas.height = baseImage.naturalHeight;
+  const exportCtx = exportCanvas.getContext("2d");
+
+  // Scale factor: canvas display size → natural size
+  const scaleX = baseImage.naturalWidth  / canvas.width;
+  const scaleY = baseImage.naturalHeight / canvas.height;
+
+  exportCtx.drawImage(baseImage, 0, 0);
+
+  ellipses.forEach(e => {
+    exportCtx.beginPath();
+    exportCtx.strokeStyle = e.color;
+    exportCtx.lineWidth = e.thickness * Math.max(scaleX, scaleY);
+    exportCtx.ellipse(
+      e.cx * scaleX, e.cy * scaleY,
+      Math.abs(e.rx) * scaleX, Math.abs(e.ry) * scaleY,
+      0, 0, 2 * Math.PI
+    );
+    exportCtx.stroke();
+  });
+
+  const dataURL = exportCanvas.toDataURL("image/png");
 
   fetch("/save_annotation/" + annotationStudyId, {
     method: "POST",
@@ -1457,6 +1519,12 @@ function saveAnnotation() {
   .then(r => r.json())
   .then(data => {
     document.getElementById("annotationStatus").innerText = "✅ Saved & emailed to patient!";
+    // Update the thumbnail on page to show annotated version
+    const scanImg = document.getElementById("scan-" + annotationStudyId);
+    if (scanImg) {
+      scanImg.src = dataURL;
+      scanImg.style.border = "2px solid #00ff88";
+    }
   })
   .catch(err => {
     document.getElementById("annotationStatus").innerText = "❌ Error: " + err;
