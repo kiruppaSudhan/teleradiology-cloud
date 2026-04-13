@@ -982,7 +982,7 @@ def view(id):
     patient=cur.fetchone()
     report_text = patient["report"]
 
-    cur.execute("""SELECT id, ctdi, dlp FROM studies WHERE patient_id=%s""",(id,))
+    cur.execute("""SELECT id, ctdi, dlp, annotation_data FROM studies WHERE patient_id=%s""",(id,))
     studies = cur.fetchall()
 
     # ================= TUMOR DETECTION =================
@@ -1194,20 +1194,11 @@ border:3px solid red;
 
 <div style="margin-bottom:20px; display:inline-block;">
 
-{% if role == 'technician' and s.annotation_data %}
-  <img src="{{ s.annotation_data }}"
-       class="scan-img dicom-image"
-       id="scan-{{ s.id }}"
-       data-study-id="{{ s.id }}"
-       onclick="selectImage(this)">
-  <br><small style="color:#00ff88;">✅ Annotated by Radiologist</small>
-{% else %}
-  <img src="/image/{{ s.id }}" 
-       class="scan-img dicom-image"
-       id="scan-{{ s.id }}"
-       data-study-id="{{ s.id }}"
-       onclick="selectImage(this); {% if role == 'radiologist' %}openAnnotation(this, '{{ s.id }}'){% endif %}">
-{% endif %}
+<img src="/image/{{ s.id }}" 
+     class="scan-img dicom-image"
+     id="scan-{{ s.id }}"
+     data-study-id="{{ s.id }}"
+     onclick="selectImage(this); openAnnotation(this, '{{ s.id }}')">
 
 <br>
 
@@ -1607,7 +1598,7 @@ def save_annotation(study_id):
                 FileType("image/png"),
                 Disposition("attachment")
             )
-            message.attachment = [attachment]
+            message.attachment = attachment
 
             sg = SendGridAPIClient(os.environ.get("SENDGRID_API_KEY"))
             sg.send(message)
