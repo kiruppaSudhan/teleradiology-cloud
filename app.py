@@ -1300,13 +1300,13 @@ updateImage()
 
 
 <!-- ===== ANNOTATION MODAL ===== -->
-<div id="annotationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center;">
-  <div style="background:#1a1a2e; border-radius:15px; padding:20px; width:90%; max-width:750px; position:relative;">
+<div id="annotationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:flex-start; overflow-y:auto; padding:20px; box-sizing:border-box;">
+  <div style="background:#1a1a2e; border-radius:15px; padding:20px; width:90%; max-width:750px; margin:auto; position:relative; box-sizing:border-box;">
     
     <h5 style="color:white;">🖊️ Annotate Scan — Draw ellipse around tumor region</h5>
     
-    <div style="position:relative; display:inline-block; width:100%;">
-      <canvas id="annotationCanvas" style="border:2px solid #00ff88; border-radius:8px; cursor:crosshair; width:100%; display:block;"></canvas>
+    <div style="position:relative; width:100%; display:flex; justify-content:center;">
+      <canvas id="annotationCanvas" style="border:2px solid #00ff88; border-radius:8px; cursor:crosshair; max-width:100%; max-height:60vh; display:block;"></canvas>
     </div>
 
     <br>
@@ -1341,12 +1341,15 @@ function openAnnotation(imgEl, studyId) {
   document.getElementById("annotationModal").style.display = "flex";
   document.getElementById("annotationStatus").innerText = "";
 
-  // Load image onto canvas
+  // Load image onto canvas — scale to fit max display size
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.onload = function() {
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+    const maxW = Math.min(700, window.innerWidth * 0.85);
+    const maxH = window.innerHeight * 0.58;
+    const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+    canvas.width  = Math.round(img.naturalWidth  * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
     baseImage = img;
     ellipses = [];
     redraw();
