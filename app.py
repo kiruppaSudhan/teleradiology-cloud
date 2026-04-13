@@ -982,7 +982,7 @@ def view(id):
     patient=cur.fetchone()
     report_text = patient["report"]
 
-    cur.execute("""SELECT id, ctdi, dlp, annotation_data FROM studies WHERE patient_id=%s""",(id,))
+    cur.execute("""SELECT id, ctdi, dlp FROM studies WHERE patient_id=%s""",(id,))
     studies = cur.fetchall()
 
     # ================= TUMOR DETECTION =================
@@ -1192,30 +1192,13 @@ border:3px solid red;
 
 {% for s in studies %}
 
-<div style="margin-bottom:20px; display:inline-block; position:relative;">
+<div style="margin-bottom:20px; display:inline-block;">
 
-{% if s.annotation_data %}
-  {# Always show the annotated image if it exists #}
-  <img src="{{ s.annotation_data }}"
-       class="scan-img dicom-image"
-       id="scan-{{ s.id }}"
-       data-study-id="{{ s.id }}"
-       style="border:2px solid #00ff88;"
-       {% if role == 'radiologist' %}
-       onclick="selectImage(this); openAnnotationFromData(this, '{{ s.id }}', '{{ s.annotation_data }}')"
-       title="Click to re-annotate"
-       {% endif %}>
-  <div style="position:absolute; top:4px; left:4px; background:#00ff88; color:#000; font-size:10px; padding:2px 6px; border-radius:4px; font-weight:bold;">✔ Annotated</div>
-{% else %}
-  <img src="/image/{{ s.id }}"
-       class="scan-img dicom-image"
-       id="scan-{{ s.id }}"
-       data-study-id="{{ s.id }}"
-       {% if role == 'radiologist' %}
-       onclick="selectImage(this); openAnnotation(this, '{{ s.id }}')"
-       title="Click to annotate"
-       {% endif %}>
-{% endif %}
+<img src="/image/{{ s.id }}" 
+     class="scan-img dicom-image"
+     id="scan-{{ s.id }}"
+     data-study-id="{{ s.id }}"
+     onclick="selectImage(this); openAnnotation(this, '{{ s.id }}')">
 
 <br>
 
@@ -1351,29 +1334,6 @@ let baseImage = null;
 let ellipses = [];
 let currentEllipse = null;
 
-function openAnnotationFromData(imgEl, studyId, dataUrl) {
-  // Load the already-annotated image back into the canvas for re-editing
-  annotationStudyId = studyId;
-  canvas = document.getElementById("annotationCanvas");
-  ctx = canvas.getContext("2d");
-  document.getElementById("annotationModal").style.display = "flex";
-  document.getElementById("annotationStatus").innerText = "";
-
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.onload = function() {
-    const maxW = Math.min(700, window.innerWidth * 0.85);
-    const maxH = window.innerHeight * 0.58;
-    const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
-    canvas.width  = Math.round(img.naturalWidth  * scale);
-    canvas.height = Math.round(img.naturalHeight * scale);
-    baseImage = img;
-    ellipses = [];
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  };
-  img.src = dataUrl;
-}
-
 function openAnnotation(imgEl, studyId) {
   annotationStudyId = studyId;
   canvas = document.getElementById("annotationCanvas");
@@ -1483,33 +1443,8 @@ function closeAnnotation() {
 }
 
 function saveAnnotation() {
+  const dataURL = canvas.toDataURL("image/png");
   document.getElementById("annotationStatus").innerText = "Saving & emailing...";
-
-  // Draw at full natural resolution so ellipses are visible in email
-  const exportCanvas = document.createElement("canvas");
-  exportCanvas.width  = baseImage.naturalWidth;
-  exportCanvas.height = baseImage.naturalHeight;
-  const exportCtx = exportCanvas.getContext("2d");
-
-  // Scale factor: canvas display size → natural size
-  const scaleX = baseImage.naturalWidth  / canvas.width;
-  const scaleY = baseImage.naturalHeight / canvas.height;
-
-  exportCtx.drawImage(baseImage, 0, 0);
-
-  ellipses.forEach(e => {
-    exportCtx.beginPath();
-    exportCtx.strokeStyle = e.color;
-    exportCtx.lineWidth = e.thickness * Math.max(scaleX, scaleY);
-    exportCtx.ellipse(
-      e.cx * scaleX, e.cy * scaleY,
-      Math.abs(e.rx) * scaleX, Math.abs(e.ry) * scaleY,
-      0, 0, 2 * Math.PI
-    );
-    exportCtx.stroke();
-  });
-
-  const dataURL = exportCanvas.toDataURL("image/png");
 
   fetch("/save_annotation/" + annotationStudyId, {
     method: "POST",
@@ -1519,12 +1454,6 @@ function saveAnnotation() {
   .then(r => r.json())
   .then(data => {
     document.getElementById("annotationStatus").innerText = "✅ Saved & emailed to patient!";
-    // Update the thumbnail on page to show annotated version
-    const scanImg = document.getElementById("scan-" + annotationStudyId);
-    if (scanImg) {
-      scanImg.src = dataURL;
-      scanImg.style.border = "2px solid #00ff88";
-    }
   })
   .catch(err => {
     document.getElementById("annotationStatus").innerText = "❌ Error: " + err;
@@ -1669,7 +1598,7 @@ def save_annotation(study_id):
                 FileType("image/png"),
                 Disposition("attachment")
             )
-            message.attachment = attachment
+            message.attachment = [attachment]
 
             sg = SendGridAPIClient(os.environ.get("SENDGRID_API_KEY"))
             sg.send(message)
