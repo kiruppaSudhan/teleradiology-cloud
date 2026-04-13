@@ -1194,11 +1194,20 @@ border:3px solid red;
 
 <div style="margin-bottom:20px; display:inline-block;">
 
-<img src="/image/{{ s.id }}" 
-     class="scan-img dicom-image"
-     id="scan-{{ s.id }}"
-     data-study-id="{{ s.id }}"
-     onclick="selectImage(this); {% if role == 'radiologist' %}openAnnotation(this, '{{ s.id }}'){% endif %}">
+{% if role == 'technician' and s.annotation_data %}
+  <img src="{{ s.annotation_data }}"
+       class="scan-img dicom-image"
+       id="scan-{{ s.id }}"
+       data-study-id="{{ s.id }}"
+       onclick="selectImage(this)">
+  <br><small style="color:#00ff88;">✅ Annotated by Radiologist</small>
+{% else %}
+  <img src="/image/{{ s.id }}" 
+       class="scan-img dicom-image"
+       id="scan-{{ s.id }}"
+       data-study-id="{{ s.id }}"
+       onclick="selectImage(this); {% if role == 'radiologist' %}openAnnotation(this, '{{ s.id }}'){% endif %}">
+{% endif %}
 
 <br>
 
