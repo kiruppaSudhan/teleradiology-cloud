@@ -1198,7 +1198,7 @@ border:3px solid red;
      class="scan-img dicom-image"
      id="scan-{{ s.id }}"
      data-study-id="{{ s.id }}"
-     onclick="selectImage(this); openAnnotation(this, '{{ s.id }}')">
+     onclick="selectImage(this); {% if role == 'radiologist' %}openAnnotation(this, '{{ s.id }}'){% endif %}">
 
 <br>
 
