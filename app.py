@@ -1195,8 +1195,10 @@ border:3px solid red;
 <div style="margin-bottom:20px; display:inline-block;">
 
 <img src="/image/{{ s.id }}" 
-     class="scan-img dicom-image" 
-     onclick="selectImage(this)">
+     class="scan-img dicom-image"
+     id="scan-{{ s.id }}"
+     data-study-id="{{ s.id }}"
+     onclick="selectImage(this); {% if role and 'radiologist' in role %}openAnnotation(this, '{{ s.id }}'){% endif %}">
 
 <br>
 
@@ -1296,6 +1298,169 @@ updateImage()
 
 </script>
 
+
+<!-- ===== ANNOTATION MODAL ===== -->
+<div id="annotationModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center;">
+  <div style="background:#1a1a2e; border-radius:15px; padding:20px; width:90%; max-width:750px; position:relative;">
+    
+    <h5 style="color:white;">🖊️ Annotate Scan — Draw ellipse around tumor region</h5>
+    
+    <div style="position:relative; display:inline-block; width:100%;">
+      <canvas id="annotationCanvas" style="border:2px solid #00ff88; border-radius:8px; cursor:crosshair; width:100%; display:block;"></canvas>
+    </div>
+
+    <br>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+      <button onclick="clearAnnotation()" class="btn btn-warning btn-sm">🗑️ Clear</button>
+      <button onclick="undoAnnotation()" class="btn btn-secondary btn-sm">↩️ Undo</button>
+      <label style="color:white; margin-top:6px;">Color:</label>
+      <input type="color" id="annotationColor" value="#ff0000" style="height:35px; width:50px; border:none; cursor:pointer;">
+      <label style="color:white; margin-top:6px;">Thickness:</label>
+      <input type="range" id="lineThickness" min="1" max="8" value="3" style="width:80px; margin-top:8px;">
+      <button onclick="saveAnnotation()" class="btn btn-success btn-sm">💾 Save & Email Patient</button>
+      <button onclick="closeAnnotation()" class="btn btn-danger btn-sm">✖ Close</button>
+    </div>
+
+    <div id="annotationStatus" style="color:#00ff88; margin-top:10px; font-weight:bold;"></div>
+  </div>
+</div>
+
+<script>
+let annotationStudyId = null;
+let isDrawing = false;
+let startX, startY;
+let canvas, ctx;
+let baseImage = null;
+let ellipses = [];
+let currentEllipse = null;
+
+function openAnnotation(imgEl, studyId) {
+  annotationStudyId = studyId;
+  canvas = document.getElementById("annotationCanvas");
+  ctx = canvas.getContext("2d");
+  document.getElementById("annotationModal").style.display = "flex";
+  document.getElementById("annotationStatus").innerText = "";
+
+  // Load image onto canvas
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = function() {
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    baseImage = img;
+    ellipses = [];
+    redraw();
+  };
+  img.src = imgEl.src;
+}
+
+function redraw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (baseImage) ctx.drawImage(baseImage, 0, 0);
+  
+  const color = document.getElementById("annotationColor").value;
+  const thickness = parseInt(document.getElementById("lineThickness").value);
+
+  ellipses.forEach(e => {
+    ctx.beginPath();
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = e.thickness;
+    ctx.ellipse(e.cx, e.cy, Math.abs(e.rx), Math.abs(e.ry), 0, 0, 2 * Math.PI);
+    ctx.stroke();
+  });
+
+  if (currentEllipse) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = thickness;
+    ctx.setLineDash([6, 3]);
+    ctx.ellipse(currentEllipse.cx, currentEllipse.cy,
+      Math.abs(currentEllipse.rx), Math.abs(currentEllipse.ry), 0, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+canvas && canvas.addEventListener("mousedown", function(e) {
+  const pos = getCanvasPos(e);
+  startX = pos.x; startY = pos.y;
+  isDrawing = true;
+});
+
+document.getElementById("annotationCanvas").addEventListener("mousedown", function(e) {
+  const pos = getCanvasPos(e);
+  startX = pos.x; startY = pos.y;
+  isDrawing = true;
+});
+
+document.getElementById("annotationCanvas").addEventListener("mousemove", function(e) {
+  if (!isDrawing) return;
+  const pos = getCanvasPos(e);
+  currentEllipse = {
+    cx: (startX + pos.x) / 2,
+    cy: (startY + pos.y) / 2,
+    rx: (pos.x - startX) / 2,
+    ry: (pos.y - startY) / 2,
+    color: document.getElementById("annotationColor").value,
+    thickness: parseInt(document.getElementById("lineThickness").value)
+  };
+  redraw();
+});
+
+document.getElementById("annotationCanvas").addEventListener("mouseup", function(e) {
+  if (!isDrawing) return;
+  isDrawing = false;
+  if (currentEllipse) {
+    ellipses.push({...currentEllipse});
+    currentEllipse = null;
+    redraw();
+  }
+});
+
+function clearAnnotation() {
+  ellipses = [];
+  currentEllipse = null;
+  redraw();
+}
+
+function undoAnnotation() {
+  ellipses.pop();
+  redraw();
+}
+
+function closeAnnotation() {
+  document.getElementById("annotationModal").style.display = "none";
+}
+
+function saveAnnotation() {
+  const dataURL = canvas.toDataURL("image/png");
+  document.getElementById("annotationStatus").innerText = "Saving & emailing...";
+
+  fetch("/save_annotation/" + annotationStudyId, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({image: dataURL})
+  })
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById("annotationStatus").innerText = "✅ Saved & emailed to patient!";
+  })
+  .catch(err => {
+    document.getElementById("annotationStatus").innerText = "❌ Error: " + err;
+  });
+}
+</script>
+
 </body>
 
 </html>
@@ -1359,6 +1524,89 @@ def delete_patient(id):
     return redirect("/dashboard")
 
 
+
+
+# ================= ANNOTATION COLUMN =================
+@app.route("/add_annotation_column")
+def add_annotation_column():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("ALTER TABLE studies ADD COLUMN IF NOT EXISTS annotation_data TEXT;")
+    conn.commit()
+    cur.close()
+    conn.close()
+    return "Annotation column added!"
+
+# ================= SAVE ANNOTATION =================
+@app.route("/save_annotation/<int:study_id>", methods=["POST"])
+def save_annotation(study_id):
+    if session.get("role") != "radiologist":
+        return "Unauthorized", 403
+
+    data = request.get_json()
+    annotation_data_url = data.get("image")  # base64 PNG from canvas
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Save annotation as base64 in DB
+    cur.execute("UPDATE studies SET annotation_data=%s WHERE id=%s", (annotation_data_url, study_id))
+
+    # Get patient email for sending
+    cur.execute("""
+        SELECT p.email, p.name, p.id as patient_id
+        FROM patients p
+        JOIN studies s ON s.patient_id = p.id
+        WHERE s.id = %s
+    """, (study_id,))
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    # Email the annotated image
+    if row and row["email"]:
+        try:
+            # Convert base64 data URL to bytes
+            header, encoded = annotation_data_url.split(",", 1)
+            img_bytes = base64.b64decode(encoded)
+
+            # Save to temp file
+            tmp_path = f"/tmp/annotation_{study_id}.png"
+            with open(tmp_path, "wb") as f:
+                f.write(img_bytes)
+
+            # Send email with annotation attached
+            message = Mail(
+                from_email=os.environ.get("EMAIL_USER"),
+                to_emails=row["email"],
+                subject="Annotated Scan from Your Radiologist",
+                html_content=f"""
+                <h2>Hello {row['name']}</h2>
+                <p>Your radiologist has annotated your brain scan to highlight the region of interest.</p>
+                <p>Please find the annotated image attached.</p>
+                <br>
+                Tele-Radiology System
+                """
+            )
+            with open(tmp_path, "rb") as f:
+                img_data = base64.b64encode(f.read()).decode()
+
+            attachment = Attachment(
+                FileContent(img_data),
+                FileName("annotated_scan.png"),
+                FileType("image/png"),
+                Disposition("attachment")
+            )
+            message.attachment = attachment
+
+            sg = SendGridAPIClient(os.environ.get("SENDGRID_API_KEY"))
+            sg.send(message)
+            print("Annotation email sent to:", row["email"])
+        except Exception as e:
+            print("Annotation email error:", e)
+
+    return {"status": "saved"}
 
 @app.route('/logout')
 def logout():
