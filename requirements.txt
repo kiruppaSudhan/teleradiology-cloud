@@ -20,3 +20,4 @@ pandas==1.5.3
 scikit-learn==1.2.2
 tflite-runtime==2.14.0
 gdown
+pypdf2

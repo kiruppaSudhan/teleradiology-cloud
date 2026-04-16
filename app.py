@@ -1654,5 +1654,131 @@ def setup_machines_table():
     cur.close()
     conn.close()
     return "✅ Machines table created!"
+
+# ================= MACHINE ADMIN PAGE =================
+import PyPDF2
+
+@app.route("/machines", methods=["GET", "POST"])
+def machines():
+    if session.get("role") != "technician":
+        return redirect("/")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if request.method == "POST":
+        name = request.form.get("name")
+        machine_type = request.form.get("machine_type")
+        manufacturer = request.form.get("manufacturer")
+        model_number = request.form.get("model_number")
+        manual_text = request.form.get("manual_text", "")
+
+        # If PDF uploaded, extract text from it
+        pdf_file = request.files.get("manual_pdf")
+        if pdf_file and pdf_file.filename != "":
+            try:
+                reader = PyPDF2.PdfReader(pdf_file)
+                for page in reader.pages:
+                    manual_text += page.extract_text() or ""
+            except Exception as e:
+                print("PDF parse error:", e)
+
+        cur.execute("""
+            INSERT INTO machines (name, machine_type, manufacturer, model_number, manual_text)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (name, machine_type, manufacturer, model_number, manual_text))
+        conn.commit()
+
+    cur.execute("SELECT id, name, machine_type, manufacturer, model_number FROM machines ORDER BY created_at DESC")
+    machines_list = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Machine Manager</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body { background:#0f0f1a; color:white; padding:30px; }
+        .card { background:#1a1a2e; border:1px solid #00ff88; border-radius:12px; padding:25px; margin-bottom:25px; }
+        input, select, textarea { background:#0f0f1a !important; color:white !important; border:1px solid #444 !important; }
+        label { color:#aaa; }
+        h2 { color:#00ff88; }
+        th { color:#00ff88; }
+    </style>
+</head>
+<body>
+<h2>🖥️ Machine Manager</h2>
+<a href="/dashboard" class="btn btn-secondary btn-sm mb-3">← Back to Dashboard</a>
+
+<div class="card">
+    <h5>➕ Add New Machine</h5>
+    <form method="POST" enctype="multipart/form-data">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label>Machine Name *</label>
+                <input type="text" name="name" class="form-control" placeholder="e.g. MRI Unit 1" required>
+            </div>
+            <div class="col-md-6">
+                <label>Machine Type *</label>
+                <select name="machine_type" class="form-control" required>
+                    <option value="">-- Select Type --</option>
+                    <option>MRI</option>
+                    <option>CT Scanner</option>
+                    <option>X-Ray</option>
+                    <option>Ultrasound</option>
+                    <option>PET Scan</option>
+                    <option>Mammography</option>
+                    <option>Fluoroscopy</option>
+                    <option>Other</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label>Manufacturer</label>
+                <input type="text" name="manufacturer" class="form-control" placeholder="e.g. Siemens, GE, Philips">
+            </div>
+            <div class="col-md-6">
+                <label>Model Number</label>
+                <input type="text" name="model_number" class="form-control" placeholder="e.g. MAGNETOM Vida">
+            </div>
+            <div class="col-12">
+                <label>Manual Text (type or paste machine info)</label>
+                <textarea name="manual_text" class="form-control" rows="5" placeholder="Paste any machine specs, troubleshooting steps, protocols..."></textarea>
+            </div>
+            <div class="col-12">
+                <label>Upload PDF Manual (optional)</label>
+                <input type="file" name="manual_pdf" class="form-control" accept=".pdf">
+            </div>
+            <div class="col-12">
+                <button class="btn btn-success">➕ Add Machine</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h5>📋 Registered Machines</h5>
+    <table class="table table-dark table-bordered">
+        <thead>
+            <tr><th>Name</th><th>Type</th><th>Manufacturer</th><th>Model</th><th>Chat</th></tr>
+        </thead>
+        <tbody>
+        {% for m in machines %}
+            <tr>
+                <td>{{ m.name }}</td>
+                <td>{{ m.machine_type }}</td>
+                <td>{{ m.manufacturer or '—' }}</td>
+                <td>{{ m.model_number or '—' }}</td>
+                <td><a href="/machine_chat/{{ m.id }}" class="btn btn-sm btn-outline-success">🤖 Chat</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+</body>
+</html>
+""", machines=machines_list)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
