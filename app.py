@@ -1825,12 +1825,69 @@ def machine_chat(machine_id):
         """
 
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}]
-            )
+            q = question.lower()
+            manual_lower = manual.lower()
 
-            answer = response.choices[0].message.content.strip()
+            # 🔹 Rule-based + manual-aware AI
+            if "protocol" in q:
+                if "ct" in machine.get("machine_type", "").lower():
+                    answer = f"""📋 CT Scan Protocol (General Steps):
+
+            1. Patient preparation (remove metal objects)
+            2. Positioning on table
+            3. Selection of scan parameters (kVp, mAs, slice thickness)
+            4. Contrast administration (if needed)
+            5. Scan acquisition
+            6. Image reconstruction
+            7. Review images for quality
+
+            📘 Based on your machine manual:
+            {manual[:500]}
+            """
+                else:
+                    answer = "Protocol depends on machine type. Please specify more details."
+
+            elif "ctdi" in q:
+                answer = """📊 CTDI (Computed Tomography Dose Index):
+
+            CTDI represents radiation dose per slice.
+
+            Formula:
+            CTDI = (1 / nT) ∫ Dose profile dz
+
+            Practically:
+            CTDIvol = (1/pitch) × CTDIw
+
+            Used to estimate patient dose in CT scans.
+            """
+
+            elif "dlp" in q:
+                answer = """📊 DLP (Dose Length Product):
+
+            DLP = CTDIvol × Scan Length
+
+            Unit: mGy·cm
+
+            It represents total radiation exposure for the scan.
+            """
+
+            elif "dose" in q:
+                answer = """⚠️ Radiation Dose Info:
+
+            - CTDI → Dose per slice
+            - DLP → Total scan dose
+            - Always follow ALARA principle (As Low As Reasonably Achievable)
+            """
+
+            elif manual.strip():
+                # fallback using manual
+                answer = f"""📘 Based on machine manual:
+
+            {manual[:1000]}
+
+            👉 Please refine your question for more specific help."""
+            else:
+                answer = "🤖 I need more details. Please ask a specific question about the machine."
 
         except Exception as e:
             print("AI ERROR:", e)
