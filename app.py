@@ -1811,11 +1811,10 @@ def machine_chat(machine_id):
         You are a medical imaging assistant.
 
         Machine Info:
-        Name: {machine['name']}
-        Type: {machine['machine_type']}
-        Manufacturer: {machine['manufacturer']}
-        Model: {machine['model']}
-
+        Name: {machine.get('name', 'N/A')}
+        Type: {machine.get('machine_type', 'N/A')}
+        Manufacturer: {machine.get('manufacturer', 'N/A')}
+        Model: {machine.get('model_number', 'N/A')}
         Manual:
         {manual}
 
