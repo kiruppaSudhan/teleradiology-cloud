@@ -1780,5 +1780,80 @@ def machines():
 </body>
 </html>
 """, machines=machines_list)
+
+@app.route("/machine_chat/<int:machine_id>", methods=["GET", "POST"])
+def machine_chat(machine_id):
+
+    if "username" not in session:
+        return redirect("/login_page")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Get machine info
+    cur.execute("SELECT * FROM machines WHERE id=%s", (machine_id,))
+    machine = cur.fetchone()
+
+    if not machine:
+        return "Machine not found"
+
+    chat_history = []
+
+    # Handle user question
+    if request.method == "POST":
+        question = request.form.get("question")
+
+        # VERY SIMPLE AI (for now)
+        manual = machine["manual_text"] or ""
+
+        if question.lower() in manual.lower():
+            answer = "✅ Found in manual: " + question
+        else:
+            answer = "🤖 Based on manual: " + manual[:200]
+
+        # Save chat
+        cur.execute("""
+            INSERT INTO machine_chats (machine_id, user_name, question, answer)
+            VALUES (%s, %s, %s, %s)
+        """, (machine_id, session["username"], question, answer))
+        conn.commit()
+
+    # Load chat history
+    cur.execute("""
+        SELECT question, answer FROM machine_chats
+        WHERE machine_id=%s ORDER BY id DESC LIMIT 10
+    """, (machine_id,))
+    chat_history = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return render_template_string("""
+    <html>
+    <head>
+        <title>Machine Chat</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    </head>
+    <body class="bg-dark text-white p-4">
+
+    <h3>🤖 Chat with {{ machine.name }}</h3>
+    <a href="/machines" class="btn btn-secondary btn-sm mb-3">← Back</a>
+
+    <div style="background:#111;padding:20px;border-radius:10px;height:400px;overflow-y:auto;">
+        {% for c in chat %}
+            <p><b>You:</b> {{ c.question }}</p>
+            <p style="color:#00ff88;"><b>AI:</b> {{ c.answer }}</p>
+            <hr>
+        {% endfor %}
+    </div>
+
+    <form method="POST" class="mt-3">
+        <input name="question" class="form-control" placeholder="Ask something about this machine..." required>
+        <button class="btn btn-success mt-2">Send</button>
+    </form>
+
+    </body>
+    </html>
+    """, machine=machine, chat=chat_history)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
