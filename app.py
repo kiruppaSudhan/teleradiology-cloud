@@ -14,6 +14,8 @@ import base64
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib import colors
 from ml_model import predict_diabetes
+from openai import OpenAI
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 
 print("App starting...")
@@ -1797,20 +1799,38 @@ def machine_chat(machine_id):
     if not machine:
         return "Machine not found"
 
-    chat_history = []
 
     # Handle user question
     if request.method == "POST":
         question = request.form.get("question")
 
-        # VERY SIMPLE AI (for now)
         manual = machine["manual_text"] or ""
+        manual = manual[:3000]   # 🔥 LIMIT SIZE (VERY IMPORTANT)
 
-        if question.lower() in manual.lower():
-            answer = "✅ Found in manual: " + question
-        else:
-            answer = "🤖 Based on manual: " + manual[:200]
+        prompt = f"""
+        You are a medical imaging assistant.
 
+        Machine Info:
+        Name: {machine['name']}
+        Type: {machine['type']}
+        Manufacturer: {machine['manufacturer']}
+        Model: {machine['model']}
+
+        Manual:
+        {manual}
+
+        User Question:
+        {question}
+
+        Give a clear, helpful, professional answer.
+        """
+
+        response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+        )
+
+        answer = response.choices[0].message.content.strip()
         # Save chat
         cur.execute("""
             INSERT INTO machine_chats (machine_id, user_name, question, answer)
