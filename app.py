@@ -998,7 +998,12 @@ def view(id):
 
     # STEP 2: Fetch data
     cur.execute("SELECT * FROM patients WHERE id=%s",(id,))
-    patient=cur.fetchone()
+    patient = cur.fetchone()
+
+    # 🔥 FIX: handle deleted/missing patient
+    if not patient:
+        return "Patient not found or deleted", 404
+
     report_text = patient["report"]
 
     cur.execute("""SELECT id, ctdi, dlp, annotation_data FROM studies WHERE patient_id=%s""",(id,))
