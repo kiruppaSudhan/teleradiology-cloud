@@ -310,6 +310,13 @@ def home():
 <html>
 <head>
 <title>Tele-Radiology System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#00ff88">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TeleRad">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
 body {
@@ -333,6 +340,13 @@ body {
 <a href="/login_page" class="btn btn-primary m-2">Login</a>
 <a href="/register" class="btn btn-success m-2">Register</a>
 </div>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/service_worker.js')
+    .then(function() { console.log('SW registered'); })
+    .catch(function(e) { console.log('SW error', e); });
+}
+</script>
 </body>
 </html>
 """)
@@ -1083,6 +1097,13 @@ def view(id):
 <html>
 
 <head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#00ff88">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TeleRad">
+<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -1471,6 +1492,14 @@ function saveAnnotation() {
   .catch(err => {
     document.getElementById("annotationStatus").innerText = "❌ Error: " + err;
   });
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/service_worker.js')
+    .then(function() { console.log('SW registered'); })
+    .catch(function(e) { console.log('SW error', e); });
 }
 </script>
 
@@ -1940,5 +1969,17 @@ def machine_chat(machine_id):
     </body>
     </html>
     """, machine=machine, chat=chat_history)
+# ================= PWA MANIFEST =================
+from flask import send_from_directory
+
+@app.route("/manifest.json")
+def manifest():
+    return send_from_directory(".", "manifest.json", mimetype="application/manifest+json")
+
+# ================= PWA SERVICE WORKER =================
+@app.route("/service_worker.js")
+def service_worker():
+    return send_from_directory(".", "service_worker.js", mimetype="application/javascript")
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
