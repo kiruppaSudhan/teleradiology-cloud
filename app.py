@@ -340,13 +340,6 @@ body {
 <a href="/login_page" class="btn btn-primary m-2">Login</a>
 <a href="/register" class="btn btn-success m-2">Register</a>
 </div>
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/service_worker.js')
-    .then(function() { console.log('SW registered'); })
-    .catch(function(e) { console.log('SW error', e); });
-}
-</script>
 </body>
 </html>
 """)
@@ -812,6 +805,7 @@ def add_patient():
     diabetes_result = predict_diabetes(glucose, bmi, age)
     print("Diabetes Prediction:", diabetes_result)
 
+    # 🔥 INSERT PATIENT FIRST
     cur.execute("""
     INSERT INTO patients (mrn,name,age,gender,contact,email,bp,hr,temperature,spo2,rr,diabetes_result,status,report)
     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'Pending','')
@@ -830,45 +824,54 @@ def add_patient():
      diabetes_result))
 
     patient_id=cur.fetchone()["id"]
+
+    # ✅ IMPORTANT: COMMIT IMMEDIATELY
     conn.commit()
+    print("✅ Patient inserted with ID:", patient_id)
 
     files = request.files.getlist("file")
 
     for file in files:
-        if file and file.filename != "":
+        try:
+            if file and file.filename != "":
 
-           dicom_bytes = file.read()
+                dicom_bytes = file.read()
 
-           ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
+                ds = pydicom.dcmread(io.BytesIO(dicom_bytes), force=True)
 
-           ctdi = None
-           dlp = None
+                ctdi = None
+                dlp = None
 
-           # Try standard tags
-           if hasattr(ds, "CTDIvol"):
-              ctdi = float(ds.CTDIvol)
- 
-           if hasattr(ds, "DLP"):
-              dlp = float(ds.DLP)
-           # DEMO PURPOSE ONLY (simulate dose if missing)
-           if dlp is None:
-               import random
-               dlp = random.randint(300, 1200)
+                if hasattr(ds, "CTDIvol"):
+                    ctdi = float(ds.CTDIvol)
 
-           if ctdi is None:
-               ctdi = round(dlp / 50, 2)
-               
-           print("DEBUG → CTDI:", ctdi, "DLP:", dlp)
-           
-           cur.execute("""
-           INSERT INTO studies (patient_id,file_name,dicom_data,ctdi,dlp)
-           VALUES (%s,%s,%s,%s,%s)
-           """,(patient_id,file.filename,psycopg2.Binary(dicom_bytes),ctdi,dlp))
+                if hasattr(ds, "DLP"):
+                    dlp = float(ds.DLP)
 
+                # fallback demo values
+                if dlp is None:
+                    import random
+                    dlp = random.randint(300, 1200)
+
+                if ctdi is None:
+                    ctdi = round(dlp / 50, 2)
+
+                print("DEBUG → CTDI:", ctdi, "DLP:", dlp)
+
+                cur.execute("""
+                INSERT INTO studies (patient_id,file_name,dicom_data,ctdi,dlp)
+                VALUES (%s,%s,%s,%s,%s)
+                """,(patient_id,file.filename,psycopg2.Binary(dicom_bytes),ctdi,dlp))
+
+        except Exception as e:
+            print("⚠️ File processing error:", e)
+
+    # FINAL COMMIT
     conn.commit()
 
     cur.close()
     conn.close()
+
     return redirect("/dashboard")
 
 
@@ -1097,13 +1100,6 @@ def view(id):
 <html>
 
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#00ff88">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="TeleRad">
-<link rel="apple-touch-icon" href="/static/icons/icon-192.png">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -1492,14 +1488,6 @@ function saveAnnotation() {
   .catch(err => {
     document.getElementById("annotationStatus").innerText = "❌ Error: " + err;
   });
-}
-</script>
-
-<script>
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/service_worker.js')
-    .then(function() { console.log('SW registered'); })
-    .catch(function(e) { console.log('SW error', e); });
 }
 </script>
 
