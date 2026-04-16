@@ -1623,5 +1623,36 @@ def save_annotation(study_id):
 def logout():
     session.clear()
     return redirect('/')
+
+# ================= MACHINE CHATBOT - CREATE TABLE =================
+@app.route("/setup_machines_table")
+def setup_machines_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS machines (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            machine_type TEXT NOT NULL,
+            manufacturer TEXT,
+            model_number TEXT,
+            manual_text TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS machine_chats (
+            id SERIAL PRIMARY KEY,
+            machine_id INTEGER REFERENCES machines(id),
+            user_name TEXT,
+            question TEXT,
+            answer TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
+    return "✅ Machines table created!"
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
