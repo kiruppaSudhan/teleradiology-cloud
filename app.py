@@ -1824,12 +1824,21 @@ def machine_chat(machine_id):
         Give a clear, helpful, professional answer.
         """
 
-        response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
-        )
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
+            )
 
-        answer = response.choices[0].message.content.strip()
+            answer = response.choices[0].message.content.strip()
+
+        except Exception as e:
+            print("AI ERROR:", e)
+
+            if "quota" in str(e).lower() or "429" in str(e):
+                answer = "⚠️ AI quota exceeded. Please try later or contact admin."
+            else:
+                answer = "⚠️ AI service error. Try again."
         # Save chat
         cur.execute("""
             INSERT INTO machine_chats (machine_id, user_name, question, answer)
