@@ -1812,7 +1812,7 @@ def machine_chat(machine_id):
 
         Machine Info:
         Name: {machine['name']}
-        Type: {machine['type']}
+        Type: {machine['machine_type']}
         Manufacturer: {machine['manufacturer']}
         Model: {machine['model']}
 
