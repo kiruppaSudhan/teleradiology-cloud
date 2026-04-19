@@ -616,90 +616,40 @@ def dashboard():
     cur.close()
     conn.close()
 
-    total    = len(patients)
-    pending  = sum(1 for p in patients if p["status"] == "Pending")
-    reviewed = total - pending
-
     return render_template_string("""
 <!DOCTYPE html>
 <html>
 <head>
 <title>Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>
-.stats-bar{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;}
-.stat-card{background:white;border-radius:12px;padding:14px 24px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:center;min-width:110px;}
-.stat-card .num{font-size:28px;font-weight:700;line-height:1;}
-.stat-card .lbl{font-size:12px;color:#888;margin-top:4px;}
-.stat-card.total .num{color:#1A5276;}
-.stat-card.pend  .num{color:#d68910;}
-.stat-card.rev   .num{color:#1e8449;}
-.filter-bar{display:flex;gap:8px;flex-wrap:wrap;}
-.filter-btn{border:2px solid #dee2e6;background:white;border-radius:20px;padding:6px 18px;font-size:13px;cursor:pointer;font-weight:500;transition:all 0.2s;}
-.filter-btn:hover{border-color:#1A5276;color:#1A5276;}
-.filter-btn.active{background:#1A5276;color:white;border-color:#1A5276;}
-.filter-btn.pend-btn.active{background:#d68910;border-color:#d68910;}
-.filter-btn.rev-btn.active{background:#1e8449;border-color:#1e8449;}
-.patient-card.hidden{display:none!important;}
-</style>
 </head>
 <body class="bg-light">
 
 <nav class="navbar navbar-dark bg-dark px-4">
 <span class="navbar-brand">{{ role.capitalize() }} Dashboard</span>
-<div class="d-flex gap-2">
-{% if role=='technician' %}
-<a href="/machines" class="btn btn-outline-light btn-sm">🖥️ Machines</a>
-{% endif %}
-<a href="/logout" class="btn btn-danger btn-sm">Logout</a>
-</div>
+<a href="/logout" class="btn btn-danger">Logout</a>
 </nav>
 
 <div class="container mt-4">
 
-<!-- Stats Bar -->
-<div class="stats-bar">
-  <div class="stat-card total">
-    <div class="num">{{ total }}</div>
-    <div class="lbl">Total Patients</div>
-  </div>
-  <div class="stat-card pend">
-    <div class="num">{{ pending }}</div>
-    <div class="lbl">Pending</div>
-  </div>
-  <div class="stat-card rev">
-    <div class="num">{{ reviewed }}</div>
-    <div class="lbl">Reviewed</div>
-  </div>
-</div>
+{% if role=='technician' %}
+<a href="/add_patient_page" class="btn btn-success mb-3">+ Add Patient</a>
+{% endif %}
 
-<!-- Top bar -->
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-  {% if role=='technician' %}
-  <a href="/add_patient_page" class="btn btn-success">+ Add Patient</a>
-  {% else %}<div></div>{% endif %}
-
-  <div class="filter-bar">
-    <button class="filter-btn active" id="btn-all" onclick="filterCards('all')">All ({{ total }})</button>
-    <button class="filter-btn pend-btn" id="btn-pending" onclick="filterCards('pending')">⏳ Pending ({{ pending }})</button>
-    <button class="filter-btn rev-btn" id="btn-reviewed" onclick="filterCards('reviewed')">✅ Reviewed ({{ reviewed }})</button>
-  </div>
-</div>
-
-<!-- Patient Cards -->
-<div class="row" id="patientGrid">
+<div class="row">
 {% for p in patients %}
-<div class="col-md-4 patient-card" data-status="{{ p.status }}">
+<div class="col-md-4">
 <div class="card shadow mb-4">
 <div class="card-body">
 <h5>{{ p.mrn }}</h5>
-<p class="mb-1"><b>Name:</b> {{ p.name }}</p>
-<p class="mb-2 text-muted" style="font-size:13px;">{{ p.age }} yrs · {{ p.gender }}</p>
+<p>Name: {{ p.name }}</p>
+
 {% if p.status=="Pending" %}
-<span class="badge bg-warning text-dark">⏳ Pending</span>
+<span class="badge bg-warning text-dark">Pending</span>
 {% else %}
-<span class="badge bg-success">✅ Reviewed</span>
+<span class="badge bg-success">Reviewed</span>
 {% endif %}
+
 <br><br>
 <a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">Open Case</a>
 {% if role=='technician' %}
@@ -711,33 +661,10 @@ def dashboard():
 {% endfor %}
 </div>
 
-<div id="emptyMsg" style="display:none;text-align:center;padding:40px;color:#888;">
-  <h5>No patients found for this filter.</h5>
 </div>
-
-</div>
-
-<script>
-function filterCards(type) {
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('btn-' + type).classList.add('active');
-  const cards = document.querySelectorAll('.patient-card');
-  let visible = 0;
-  cards.forEach(card => {
-    const status = card.dataset.status;
-    let show = type === 'all' ||
-      (type === 'pending'  && status === 'Pending') ||
-      (type === 'reviewed' && status !== 'Pending');
-    card.classList.toggle('hidden', !show);
-    if (show) visible++;
-  });
-  document.getElementById('emptyMsg').style.display = visible === 0 ? 'block' : 'none';
-}
-</script>
-
 </body>
 </html>
-""", patients=patients, role=session["role"], total=total, pending=pending, reviewed=reviewed)
+""",patients=patients,role=session["role"])
 
 # ================= ADD PATIENT =================
 @app.route("/add_patient_page")
@@ -1223,7 +1150,39 @@ border:3px solid red;
 <p><b>Diabetes (clinical input):</b> {{ patient.diabetes_result }}</p>
 
 <h5>AI Imaging Analysis</h5>
-<p><b>Brain Tumor Detection:</b> {{ tumor_result }}</p>
+
+{% set has_conf = "%" in tumor_result %}
+{% if has_conf %}
+  {% set parts = tumor_result.split("(") %}
+  {% set label = parts[0].strip() %}
+  {% set conf_raw = parts[1].replace("% confidence)", "").replace("%)", "").strip() if parts|length > 1 else "0" %}
+  {% set conf = conf_raw|float %}
+  {% if conf >= 90 %}
+    {% set bc = "#1e8449" %}{% set bg = "#eafaf1" %}{% set bar = "#27ae60" %}{% set icon = "🟢" %}{% set lvl = "High Confidence" %}
+  {% elif conf >= 70 %}
+    {% set bc = "#d68910" %}{% set bg = "#fef9e7" %}{% set bar = "#f39c12" %}{% set icon = "🟡" %}{% set lvl = "Moderate Confidence" %}
+  {% else %}
+    {% set bc = "#c0392b" %}{% set bg = "#fdedec" %}{% set bar = "#e74c3c" %}{% set icon = "🔴" %}{% set lvl = "Low Confidence" %}
+  {% endif %}
+<div style="background:{{ bg }};border:1.5px solid {{ bc }};border-radius:12px;padding:14px 18px;margin-bottom:8px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div><span style="font-size:18px;">{{ icon }}</span>
+      <b style="color:{{ bc }};font-size:15px;margin-left:6px;">{{ label }}</b></div>
+    <span style="background:{{ bc }};color:white;border-radius:20px;padding:4px 14px;font-size:13px;font-weight:600;">{{ conf_raw }}% confidence</span>
+  </div>
+  <div style="margin-top:10px;">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#666;margin-bottom:4px;">
+      <span>Confidence Level</span>
+      <span style="color:{{ bc }};font-weight:600;">{{ lvl }}</span>
+    </div>
+    <div style="background:#ddd;border-radius:10px;height:10px;overflow:hidden;">
+      <div style="width:{{ conf_raw }}%;background:{{ bar }};height:100%;border-radius:10px;"></div>
+    </div>
+  </div>
+</div>
+{% else %}
+<p><b>Brain Tumor Detection:</b> <span style="color:#888;">{{ tumor_result }}</span></p>
+{% endif %}
 
 <p>Status: {{ patient.status }}</p>
 
