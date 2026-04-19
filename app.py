@@ -1857,9 +1857,8 @@ YOUR ROLE - Guide radiology technicians who are new to this machine:
 - Cleaning and maintenance
 
 Be clear, step-by-step and beginner-friendly. Use numbered lists for procedures.
-Use emojis: warning for warnings, checkmark for confirmations, clipboard for procedures."""
+Do NOT add any disclaimer or warning note at the end - that will be added separately."""
 
-            # load last 4 messages for memory
             cur.execute("""
                 SELECT question, answer FROM machine_chats
                 WHERE machine_id=%s ORDER BY id DESC LIMIT 4
@@ -1931,12 +1930,16 @@ body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',sans-serif; }
 }
 .machine-badge h5 { margin:0; font-size:15px; color:#58a6ff; }
 .machine-badge small { color:#8b949e; font-size:11px; }
-.chat-area { padding:20px; display:flex; flex-direction:column; gap:14px; padding-bottom:90px; }
+.chat-area {
+  padding:20px; display:flex; flex-direction:column;
+  gap:14px; padding-bottom:90px;
+}
 .msg-wrap-user { display:flex; justify-content:flex-end; }
 .msg-wrap-ai   { display:flex; justify-content:flex-start; }
 .msg-user {
   background:#1f4e79; border-radius:18px 18px 4px 18px;
-  padding:12px 16px; max-width:72%; font-size:14px; line-height:1.6;
+  padding:12px 16px; max-width:72%;
+  font-size:14px; line-height:1.6;
 }
 .msg-ai {
   background:#161b22; border:1px solid #30363d;
@@ -1944,6 +1947,18 @@ body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',sans-serif; }
   border-radius:4px 18px 18px 18px;
   padding:12px 16px; max-width:78%;
   font-size:14px; line-height:1.7; white-space:pre-wrap;
+}
+.disclaimer {
+  margin-top:10px;
+  background:#1a1a0e;
+  border:1px solid #4a4a1a;
+  border-left:3px solid #d4a017;
+  border-radius:8px;
+  padding:8px 12px;
+  font-size:11px;
+  color:#a89a5a;
+  max-width:78%;
+  line-height:1.5;
 }
 .msg-label { font-size:11px; color:#8b949e; margin-bottom:4px; }
 .empty-state { text-align:center; color:#8b949e; padding:40px 20px; }
@@ -1968,7 +1983,8 @@ body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',sans-serif; }
 .input-bar input:focus { border-color:#58a6ff; }
 .input-bar button {
   background:#238636; color:white; border:none;
-  border-radius:10px; padding:12px 18px; font-size:14px; cursor:pointer;
+  border-radius:10px; padding:12px 18px;
+  font-size:14px; cursor:pointer;
 }
 .input-bar button:hover { background:#2ea043; }
 </style>
@@ -2014,6 +2030,12 @@ body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',sans-serif; }
     <div>
       <div class="msg-label">🤖 {{ machine.name }} Assistant</div>
       <div class="msg-ai">{{ c.answer }}</div>
+      <div class="disclaimer">
+        ⚕️ <b>Medical Disclaimer:</b> This AI guidance is for informational support only.
+        Always consult your certified biomedical engineer or manufacturer's technical support
+        before performing any critical operations, repairs or clinical procedures.
+        In case of emergency, contact <b>{{ machine.manufacturer }} support</b> immediately.
+      </div>
     </div>
   </div>
   {% endfor %}
