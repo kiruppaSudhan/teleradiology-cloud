@@ -616,6 +616,10 @@ def dashboard():
     cur.close()
     conn.close()
 
+    total    = len(patients)
+    pending  = sum(1 for p in patients if p["status"] == "Pending")
+    reviewed = total - pending
+
     return render_template_string("""
 <!DOCTYPE html>
 <html>
@@ -623,27 +627,20 @@ def dashboard():
 <title>Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <style>
-.chat-fab{position:fixed;bottom:28px;right:28px;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#1A5276,#00cc66);color:white;border:none;font-size:26px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;display:flex;align-items:center;justify-content:center;transition:transform 0.2s;}
-.chat-fab:hover{transform:scale(1.1);}
-.notif{position:absolute;top:-4px;right:-4px;background:red;color:white;border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;}
-.chat-popup{display:none;position:fixed;bottom:100px;right:28px;width:360px;height:500px;background:#0d1117;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,0.5);z-index:9998;flex-direction:column;overflow:hidden;border:1px solid #30363d;}
-.chat-popup.open{display:flex;}
-.chat-header{background:linear-gradient(135deg,#0D2B4E,#1A5276);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;}
-.chat-header h6{margin:0;color:white;font-size:14px;}
-.chat-header small{color:#aaa;font-size:11px;}
-.close-btn{background:none;border:none;color:white;font-size:18px;cursor:pointer;}
-.chat-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
-.bot-msg{background:#161b22;border-left:3px solid #00cc66;border-radius:4px 12px 12px 12px;padding:10px 12px;font-size:13px;color:#e6edf3;line-height:1.6;white-space:pre-wrap;}
-.user-msg{background:#1f4e79;border-radius:12px 12px 4px 12px;padding:10px 12px;font-size:13px;color:white;align-self:flex-end;max-width:85%;}
-.msg-label{font-size:10px;color:#8b949e;margin-bottom:3px;}
-.disclaimer-mini{margin-top:6px;background:#1a1a0e;border:1px solid #4a4a1a;border-left:3px solid #d4a017;border-radius:6px;padding:6px 10px;font-size:10px;color:#a89a5a;}
-.quick-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px;background:#0d1117;}
-.qchip{background:#21262d;border:1px solid #30363d;border-radius:16px;padding:4px 10px;font-size:11px;color:#8b949e;cursor:pointer;white-space:nowrap;}
-.qchip:hover{border-color:#00cc66;color:#00cc66;}
-.chat-input-area{padding:10px;background:#161b22;border-top:1px solid #21262d;display:flex;gap:8px;}
-.chat-input-area input{flex:1;background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;}
-.chat-input-area input:focus{border-color:#58a6ff;}
-.chat-input-area button{background:#238636;color:white;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;}
+.stats-bar{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;}
+.stat-card{background:white;border-radius:12px;padding:14px 24px;box-shadow:0 2px 8px rgba(0,0,0,0.08);text-align:center;min-width:110px;}
+.stat-card .num{font-size:28px;font-weight:700;line-height:1;}
+.stat-card .lbl{font-size:12px;color:#888;margin-top:4px;}
+.stat-card.total .num{color:#1A5276;}
+.stat-card.pend  .num{color:#d68910;}
+.stat-card.rev   .num{color:#1e8449;}
+.filter-bar{display:flex;gap:8px;flex-wrap:wrap;}
+.filter-btn{border:2px solid #dee2e6;background:white;border-radius:20px;padding:6px 18px;font-size:13px;cursor:pointer;font-weight:500;transition:all 0.2s;}
+.filter-btn:hover{border-color:#1A5276;color:#1A5276;}
+.filter-btn.active{background:#1A5276;color:white;border-color:#1A5276;}
+.filter-btn.pend-btn.active{background:#d68910;border-color:#d68910;}
+.filter-btn.rev-btn.active{background:#1e8449;border-color:#1e8449;}
+.patient-card.hidden{display:none!important;}
 </style>
 </head>
 <body class="bg-light">
@@ -659,21 +656,49 @@ def dashboard():
 </nav>
 
 <div class="container mt-4">
-{% if role=='technician' %}
-<a href="/add_patient_page" class="btn btn-success mb-3">+ Add Patient</a>
-{% endif %}
 
-<div class="row">
+<!-- Stats Bar -->
+<div class="stats-bar">
+  <div class="stat-card total">
+    <div class="num">{{ total }}</div>
+    <div class="lbl">Total Patients</div>
+  </div>
+  <div class="stat-card pend">
+    <div class="num">{{ pending }}</div>
+    <div class="lbl">Pending</div>
+  </div>
+  <div class="stat-card rev">
+    <div class="num">{{ reviewed }}</div>
+    <div class="lbl">Reviewed</div>
+  </div>
+</div>
+
+<!-- Top bar -->
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  {% if role=='technician' %}
+  <a href="/add_patient_page" class="btn btn-success">+ Add Patient</a>
+  {% else %}<div></div>{% endif %}
+
+  <div class="filter-bar">
+    <button class="filter-btn active" id="btn-all" onclick="filterCards('all')">All ({{ total }})</button>
+    <button class="filter-btn pend-btn" id="btn-pending" onclick="filterCards('pending')">⏳ Pending ({{ pending }})</button>
+    <button class="filter-btn rev-btn" id="btn-reviewed" onclick="filterCards('reviewed')">✅ Reviewed ({{ reviewed }})</button>
+  </div>
+</div>
+
+<!-- Patient Cards -->
+<div class="row" id="patientGrid">
 {% for p in patients %}
-<div class="col-md-4">
+<div class="col-md-4 patient-card" data-status="{{ p.status }}">
 <div class="card shadow mb-4">
 <div class="card-body">
 <h5>{{ p.mrn }}</h5>
-<p>Name: {{ p.name }}</p>
+<p class="mb-1"><b>Name:</b> {{ p.name }}</p>
+<p class="mb-2 text-muted" style="font-size:13px;">{{ p.age }} yrs · {{ p.gender }}</p>
 {% if p.status=="Pending" %}
-<span class="badge bg-warning text-dark">Pending</span>
+<span class="badge bg-warning text-dark">⏳ Pending</span>
 {% else %}
-<span class="badge bg-success">Reviewed</span>
+<span class="badge bg-success">✅ Reviewed</span>
 {% endif %}
 <br><br>
 <a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">Open Case</a>
@@ -685,108 +710,34 @@ def dashboard():
 </div>
 {% endfor %}
 </div>
+
+<div id="emptyMsg" style="display:none;text-align:center;padding:40px;color:#888;">
+  <h5>No patients found for this filter.</h5>
 </div>
 
-{% if role=='technician' %}
-<!-- Floating Chat Button -->
-<button class="chat-fab" onclick="toggleChat()" id="chatFab">
-  🤖
-  <span class="notif" id="notifBadge">1</span>
-</button>
-
-<!-- Chat Popup -->
-<div class="chat-popup" id="chatPopup">
-  <div class="chat-header">
-    <div>
-      <h6>🤖 TeleRad Assistant</h6>
-      <small>Machine & radiology AI guide</small>
-    </div>
-    <button class="close-btn" onclick="toggleChat()">✕</button>
-  </div>
-
-  <div class="chat-messages" id="chatMessages">
-    <div>
-      <div class="msg-label">🤖 Assistant</div>
-      <div class="bot-msg">👋 Hello! I'm your TeleRad AI Assistant.
-
-I can help you with:
-• Machine startup & operation
-• Patient preparation tips
-• Scan protocols & parameters
-• Troubleshooting errors
-• Radiation dose guidance
-
-What do you need help with today?</div>
-    </div>
-  </div>
-
-  <div class="quick-chips">
-    <span class="qchip" onclick="sendQuick('How do I start up the CT scanner?')">🔌 CT Startup</span>
-    <span class="qchip" onclick="sendQuick('Patient preparation steps?')">🧍 Patient prep</span>
-    <span class="qchip" onclick="sendQuick('What is CTDI and DLP?')">☢️ Dose info</span>
-    <span class="qchip" onclick="sendQuick('Machine showing error, help!')">🔧 Error help</span>
-  </div>
-
-  <div class="chat-input-area">
-    <input type="text" id="chatInput" placeholder="Ask anything..."
-           onkeypress="if(event.key==='Enter') sendMessage()">
-    <button onclick="sendMessage()" id="sendBtn">➤</button>
-  </div>
 </div>
 
 <script>
-function toggleChat() {
-  const popup = document.getElementById("chatPopup");
-  popup.classList.toggle("open");
-  document.getElementById("notifBadge").style.display = "none";
-}
-
-function sendQuick(text) {
-  document.getElementById("chatInput").value = text;
-  sendMessage();
-}
-
-async function sendMessage() {
-  const input = document.getElementById("chatInput");
-  const msg = input.value.trim();
-  if (!msg) return;
-  const messages = document.getElementById("chatMessages");
-  const sendBtn = document.getElementById("sendBtn");
-
-  messages.innerHTML += `<div style="display:flex;justify-content:flex-end;"><div class="user-msg">${msg}</div></div>`;
-  input.value = "";
-  sendBtn.textContent = "...";
-  sendBtn.disabled = true;
-  messages.scrollTop = messages.scrollHeight;
-
-  const typingId = "t" + Date.now();
-  messages.innerHTML += `<div id="${typingId}"><div class="msg-label">🤖 Assistant</div><div class="bot-msg" style="color:#8b949e;">Thinking...</div></div>`;
-  messages.scrollTop = messages.scrollHeight;
-
-  try {
-    const resp = await fetch("/dashboard_chat", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({message: msg})
-    });
-    const data = await resp.json();
-    document.getElementById(typingId).remove();
-    messages.innerHTML += `<div><div class="msg-label">🤖 Assistant</div><div class="bot-msg">${data.reply}</div><div class="disclaimer-mini">⚕️ <b>Disclaimer:</b> For informational guidance only. Consult your biomedical engineer for critical operations.</div></div>`;
-  } catch(e) {
-    document.getElementById(typingId).remove();
-    messages.innerHTML += `<div class="bot-msg" style="color:#ff6b6b;">⚠️ Error. Try again.</div>`;
-  }
-
-  sendBtn.textContent = "➤";
-  sendBtn.disabled = false;
-  messages.scrollTop = messages.scrollHeight;
+function filterCards(type) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + type).classList.add('active');
+  const cards = document.querySelectorAll('.patient-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const status = card.dataset.status;
+    let show = type === 'all' ||
+      (type === 'pending'  && status === 'Pending') ||
+      (type === 'reviewed' && status !== 'Pending');
+    card.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+  document.getElementById('emptyMsg').style.display = visible === 0 ? 'block' : 'none';
 }
 </script>
-{% endif %}
 
 </body>
 </html>
-""",patients=patients,role=session["role"])
+""", patients=patients, role=session["role"], total=total, pending=pending, reviewed=reviewed)
 
 # ================= ADD PATIENT =================
 @app.route("/add_patient_page")
@@ -1771,55 +1722,6 @@ def save_annotation(study_id):
             print("Annotation email error:", e)
 
     return {"status": "saved"}
-
-# ================= DASHBOARD CHATBOT API =================
-@app.route("/dashboard_chat", methods=["POST"])
-def dashboard_chat():
-    if "username" not in session:
-        return {"reply": "Please login first."}, 401
-
-    data = request.get_json()
-    question = data.get("message", "").strip()
-    if not question:
-        return {"reply": "Please ask a question."}
-
-    system_prompt = """You are TeleRad Assistant, an expert AI guide for radiology technicians.
-You help technicians with:
-1. Medical imaging machine operation (CT, MRI, X-Ray, Ultrasound)
-2. Patient preparation and positioning
-3. Scan protocols and parameter settings
-4. Radiation dose management and ALARA principle
-5. Equipment troubleshooting and error resolution
-6. Quality control and calibration
-7. Safety procedures and emergency protocols
-8. Maintenance schedules
-Be concise, clear and step-by-step. Use numbered lists for procedures.
-Use emojis: checkmark for confirmations, warning for warnings, clipboard for procedures, wrench for troubleshooting.
-Keep answers focused and practical for a busy technician."""
-
-    try:
-        import requests as req
-        resp = req.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
-                     "Content-Type": "application/json"},
-            json={"model": "llama-3.3-70b-versatile",
-                  "messages": [
-                      {"role": "system", "content": system_prompt},
-                      {"role": "user", "content": question}
-                  ],
-                  "max_tokens": 512, "temperature": 0.7},
-            timeout=30
-        )
-        resp_data = resp.json()
-        if resp.status_code == 200:
-            reply = resp_data["choices"][0]["message"]["content"]
-        else:
-            reply = f"AI error: {resp_data.get('error',{}).get('message','Unknown')}"
-    except Exception as e:
-        reply = f"Connection error: {str(e)}"
-
-    return {"reply": reply}
 
 @app.route('/logout')
 def logout():
