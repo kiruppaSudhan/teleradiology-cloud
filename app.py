@@ -1962,16 +1962,64 @@ document.getElementById("chatForm").onsubmit=function(){document.getElementById(
 </html>
 """, machine=machine, chat=chat_history)
 # ================= PWA MANIFEST =================
-from flask import send_from_directory
+from flask import Response
 
 @app.route("/manifest.json")
 def manifest():
-    return send_from_directory(".", "manifest.json", mimetype="application/manifest+json")
+    content = '''{
+  "name": "Tele-Radiology System",
+  "short_name": "TeleRad",
+  "description": "AI-Assisted Radiology Reporting Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#1A5276",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/static/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}'''
+    return Response(content, mimetype="application/manifest+json")
 
-# ================= PWA SERVICE WORKER =================
 @app.route("/service_worker.js")
 def service_worker():
-    return send_from_directory(".", "service_worker.js", mimetype="application/javascript")
+    content = """
+const CACHE_NAME = 'teleradiology-v2';
+const URLS_TO_CACHE = ['/', '/login_page', '/dashboard'];
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(URLS_TO_CACHE))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
+  );
+});
+
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request).then(response => response || fetch(event.request))
+  );
+});
+"""
+    return Response(content, mimetype="application/javascript")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
