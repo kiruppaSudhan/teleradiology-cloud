@@ -22,3 +22,4 @@ tflite-runtime==2.14.0
 gdown
 pypdf2
 openai
+requests

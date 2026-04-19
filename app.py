@@ -1821,121 +1821,106 @@ def machine_chat(machine_id):
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # Get machine info
     cur.execute("SELECT * FROM machines WHERE id=%s", (machine_id,))
     machine = cur.fetchone()
-
     if not machine:
         return "Machine not found"
 
+    answer = None
 
-    # Handle user question
     if request.method == "POST":
-        question = request.form.get("question")
+        question = request.form.get("question", "").strip()
 
-        manual = machine["manual_text"] or ""
-        manual = manual[:3000]   # 🔥 LIMIT SIZE (VERY IMPORTANT)
+        if question:
+            manual = (machine["manual_text"] or "").strip()
 
-        prompt = f"""
-        You are a medical imaging assistant.
+            system_prompt = f"""You are an expert medical equipment technician assistant for radiology machines.
 
-        Machine Info:
-        Name: {machine.get('name', 'N/A')}
-        Type: {machine.get('machine_type', 'N/A')}
-        Manufacturer: {machine.get('manufacturer', 'N/A')}
-        Model: {machine.get('model_number', 'N/A')}
-        Manual:
-        {manual}
+You are assigned to help technicians operate and troubleshoot this specific machine:
 
-        User Question:
-        {question}
+=== MACHINE DETAILS ===
+Name         : {machine['name']}
+Type         : {machine['machine_type']}
+Manufacturer : {machine['manufacturer']}
+Model Number : {machine['model_number']}
 
-        Give a clear, helpful, professional answer.
-        """
+=== MACHINE MANUAL / KNOWLEDGE BASE ===
+{manual if manual else "No manual uploaded. Use your general medical equipment knowledge for this machine type."}
+=== END OF MANUAL ===
 
-        try:
-            q = question.lower()
-            manual_lower = manual.lower()
+YOUR ROLE — Guide radiology technicians who are new to this machine:
+1. Step-by-step startup and shutdown procedures
+2. Patient preparation and positioning
+3. Scan protocols and parameter settings (kVp, mAs, slice thickness etc.)
+4. Safety precautions and radiation dose management (ALARA principle)
+5. Error codes and troubleshooting steps
+6. Quality control and calibration checks
+7. Cleaning and maintenance schedules
+8. Emergency procedures
 
-            # 🔹 Rule-based + manual-aware AI
-            if "protocol" in q:
-                if "ct" in machine.get("machine_type", "").lower():
-                    answer = f"""📋 CT Scan Protocol (General Steps):
+RESPONSE STYLE:
+- Always be clear, step-by-step and beginner-friendly
+- Use numbered lists for procedures
+- Use emojis: ⚠️ warnings, ✅ confirmations, 📋 procedures, 🔧 troubleshooting
+- Prioritize patient and operator safety above all
+- Keep answers focused on THIS specific machine"""
 
-            1. Patient preparation (remove metal objects)
-            2. Positioning on table
-            3. Selection of scan parameters (kVp, mAs, slice thickness)
-            4. Contrast administration (if needed)
-            5. Scan acquisition
-            6. Image reconstruction
-            7. Review images for quality
+            # Load last 6 messages for conversation memory
+            cur.execute("""
+                SELECT question, answer FROM machine_chats
+                WHERE machine_id=%s ORDER BY id DESC LIMIT 6
+            """, (machine_id,))
+            recent = list(reversed(cur.fetchall()))
 
-            📘 Based on your machine manual:
-            {manual[:500]}
-            """
+            messages = [{"role": "system", "content": system_prompt}]
+            for r in recent:
+                messages.append({"role": "user",      "content": r["question"]})
+                messages.append({"role": "assistant",  "content": r["answer"]})
+            messages.append({"role": "user", "content": question})
+
+            try:
+                import requests as req
+                headers = {
+                    "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": "llama3-8b-8192",
+                    "messages": messages,
+                    "max_tokens": 1024,
+                    "temperature": 0.7
+                }
+                resp = req.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=30
+                )
+                resp.raise_for_status()
+                answer = resp.json()["choices"][0]["message"]["content"]
+
+            except Exception as e:
+                print("GROQ API ERROR:", e)
+                err = str(e).lower()
+                if "401" in err or "unauthorized" in err:
+                    answer = "⚠️ Groq API key not configured correctly. Ask admin to check GROQ_API_KEY in Render environment."
+                elif "429" in err or "rate" in err:
+                    answer = "⚠️ Rate limit reached. Please wait a moment and try again."
+                elif "timeout" in err:
+                    answer = "⚠️ Request timed out. Please try again."
                 else:
-                    answer = "Protocol depends on machine type. Please specify more details."
+                    answer = f"⚠️ AI error: {str(e)}"
 
-            elif "ctdi" in q:
-                answer = """📊 CTDI (Computed Tomography Dose Index):
+            cur.execute("""
+                INSERT INTO machine_chats (machine_id, user_name, question, answer)
+                VALUES (%s, %s, %s, %s)
+            """, (machine_id, session["username"], question, answer))
+            conn.commit()
 
-            CTDI represents radiation dose per slice.
-
-            Formula:
-            CTDI = (1 / nT) ∫ Dose profile dz
-
-            Practically:
-            CTDIvol = (1/pitch) × CTDIw
-
-            Used to estimate patient dose in CT scans.
-            """
-
-            elif "dlp" in q:
-                answer = """📊 DLP (Dose Length Product):
-
-            DLP = CTDIvol × Scan Length
-
-            Unit: mGy·cm
-
-            It represents total radiation exposure for the scan.
-            """
-
-            elif "dose" in q:
-                answer = """⚠️ Radiation Dose Info:
-
-            - CTDI → Dose per slice
-            - DLP → Total scan dose
-            - Always follow ALARA principle (As Low As Reasonably Achievable)
-            """
-
-            elif manual.strip():
-                # fallback using manual
-                answer = f"""📘 Based on machine manual:
-
-            {manual[:1000]}
-
-            👉 Please refine your question for more specific help."""
-            else:
-                answer = "🤖 I need more details. Please ask a specific question about the machine."
-
-        except Exception as e:
-            print("AI ERROR:", e)
-
-            if "quota" in str(e).lower() or "429" in str(e):
-                answer = "⚠️ AI quota exceeded. Please try later or contact admin."
-            else:
-                answer = "⚠️ AI service error. Try again."
-        # Save chat
-        cur.execute("""
-            INSERT INTO machine_chats (machine_id, user_name, question, answer)
-            VALUES (%s, %s, %s, %s)
-        """, (machine_id, session["username"], question, answer))
-        conn.commit()
-
-    # Load chat history
+    # Load full history newest last
     cur.execute("""
         SELECT question, answer FROM machine_chats
-        WHERE machine_id=%s ORDER BY id DESC LIMIT 10
+        WHERE machine_id=%s ORDER BY id ASC
     """, (machine_id,))
     chat_history = cur.fetchall()
 
@@ -1943,32 +1928,173 @@ def machine_chat(machine_id):
     conn.close()
 
     return render_template_string("""
-    <html>
-    <head>
-        <title>Machine Chat</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    </head>
-    <body class="bg-dark text-white p-4">
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{ machine.name }} Assistant</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',sans-serif; }
 
-    <h3>🤖 Chat with {{ machine.name }}</h3>
-    <a href="/machines" class="btn btn-secondary btn-sm mb-3">← Back</a>
+.top-bar {
+  background:linear-gradient(135deg,#0D2B4E,#1A5276);
+  padding:14px 20px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border-bottom:1px solid #21262d;
+  position:sticky; top:0; z-index:100;
+}
+.machine-badge h5 { margin:0; font-size:15px; color:#58a6ff; }
+.machine-badge small { color:#8b949e; font-size:11px; }
 
-    <div style="background:#111;padding:20px;border-radius:10px;height:400px;overflow-y:auto;">
-        {% for c in chat %}
-            <p><b>You:</b> {{ c.question }}</p>
-            <p style="color:#00ff88;"><b>AI:</b> {{ c.answer }}</p>
-            <hr>
-        {% endfor %}
+.chat-area {
+  padding:20px;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  padding-bottom:90px;
+}
+
+.msg-wrap-user { display:flex; justify-content:flex-end; }
+.msg-wrap-ai   { display:flex; justify-content:flex-start; }
+
+.msg-user {
+  background:#1f4e79;
+  border-radius:18px 18px 4px 18px;
+  padding:12px 16px;
+  max-width:72%;
+  font-size:14px;
+  line-height:1.6;
+}
+.msg-ai {
+  background:#161b22;
+  border:1px solid #30363d;
+  border-left:3px solid #00cc66;
+  border-radius:4px 18px 18px 18px;
+  padding:12px 16px;
+  max-width:78%;
+  font-size:14px;
+  line-height:1.7;
+  white-space:pre-wrap;
+}
+.msg-label {
+  font-size:11px;
+  color:#8b949e;
+  margin-bottom:4px;
+}
+
+.empty-state {
+  text-align:center;
+  color:#8b949e;
+  padding:40px 20px;
+}
+.empty-state h4 { color:#58a6ff; margin-bottom:10px; }
+.chips {
+  display:flex; flex-wrap:wrap;
+  gap:8px; justify-content:center; margin-top:16px;
+}
+.chip {
+  background:#21262d; border:1px solid #30363d;
+  border-radius:20px; padding:7px 14px;
+  font-size:12px; color:#8b949e; cursor:pointer;
+}
+.chip:hover { border-color:#58a6ff; color:#58a6ff; }
+
+.input-bar {
+  position:fixed; bottom:0; left:0; right:0;
+  background:#161b22;
+  border-top:1px solid #21262d;
+  padding:12px 16px;
+  display:flex; gap:10px;
+}
+.input-bar input {
+  flex:1; background:#21262d;
+  border:1px solid #30363d; color:#e6edf3;
+  border-radius:10px; padding:12px 14px;
+  font-size:14px; outline:none;
+}
+.input-bar input:focus { border-color:#58a6ff; }
+.input-bar button {
+  background:#238636; color:white;
+  border:none; border-radius:10px;
+  padding:12px 18px; font-size:14px; cursor:pointer;
+}
+.input-bar button:hover { background:#2ea043; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="/machines" style="color:#8b949e;text-decoration:none;font-size:22px;">←</a>
+  <div class="machine-badge">
+    <h5>🤖 {{ machine.name }}</h5>
+    <small>{{ machine.machine_type }} · {{ machine.manufacturer }} · {{ machine.model_number }}</small>
+  </div>
+  <a href="/dashboard" class="btn btn-sm btn-outline-secondary ms-auto">🏠</a>
+</div>
+
+<div class="chat-area" id="chatBox">
+  {% if not chat %}
+  <div class="empty-state">
+    <h4>👋 Hello, Technician!</h4>
+    <p>I'm your dedicated assistant for the <b>{{ machine.name }}</b>.<br>
+    Ask me anything about operating, troubleshooting or maintaining this machine.</p>
+    <div class="chips">
+      <span class="chip" onclick="fillQ('How do I start up this machine step by step?')">🔌 Startup procedure</span>
+      <span class="chip" onclick="fillQ('What are the safety precautions I must follow?')">⚠️ Safety</span>
+      <span class="chip" onclick="fillQ('How do I position the patient correctly?')">🧍 Patient positioning</span>
+      <span class="chip" onclick="fillQ('What scan protocol should I use for brain imaging?')">📋 Scan protocol</span>
+      <span class="chip" onclick="fillQ('The machine is showing an error. How do I troubleshoot?')">🔧 Troubleshoot</span>
+      <span class="chip" onclick="fillQ('How do I clean and maintain this machine?')">🧹 Maintenance</span>
+      <span class="chip" onclick="fillQ('How do I shut down the machine safely?')">🔴 Shutdown</span>
+      <span class="chip" onclick="fillQ('What is the radiation dose limit for this machine?')">☢️ Dose limits</span>
     </div>
+  </div>
+  {% endif %}
 
-    <form method="POST" class="mt-3">
-        <input name="question" class="form-control" placeholder="Ask something about this machine..." required>
-        <button class="btn btn-success mt-2">Send</button>
-    </form>
+  {% for c in chat %}
+  <div class="msg-wrap-user">
+    <div>
+      <div class="msg-label" style="text-align:right;">You</div>
+      <div class="msg-user">{{ c.question }}</div>
+    </div>
+  </div>
+  <div class="msg-wrap-ai">
+    <div>
+      <div class="msg-label">🤖 {{ machine.name }} Assistant</div>
+      <div class="msg-ai">{{ c.answer }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
 
-    </body>
-    </html>
-    """, machine=machine, chat=chat_history)
+<form method="POST" class="input-bar" id="chatForm">
+  <input name="question" id="qInput"
+         placeholder="Ask about startup, protocols, errors, maintenance..."
+         autocomplete="off" required>
+  <button type="submit" id="sendBtn">Send ➤</button>
+</form>
+
+<script>
+const box = document.getElementById("chatBox");
+box.scrollTop = box.scrollHeight;
+
+function fillQ(text) {
+  document.getElementById("qInput").value = text;
+  document.getElementById("qInput").focus();
+}
+
+document.getElementById("chatForm").onsubmit = function() {
+  document.getElementById("sendBtn").textContent = "Thinking...";
+  document.getElementById("sendBtn").disabled = true;
+};
+</script>
+</body>
+</html>
+""", machine=machine, chat=chat_history)
 # ================= PWA MANIFEST =================
 from flask import send_from_directory
 
