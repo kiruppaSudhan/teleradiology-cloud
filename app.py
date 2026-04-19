@@ -622,16 +622,43 @@ def dashboard():
 <head>
 <title>Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+.chat-fab{position:fixed;bottom:28px;right:28px;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#1A5276,#00cc66);color:white;border:none;font-size:26px;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;display:flex;align-items:center;justify-content:center;transition:transform 0.2s;}
+.chat-fab:hover{transform:scale(1.1);}
+.notif{position:absolute;top:-4px;right:-4px;background:red;color:white;border-radius:50%;width:20px;height:20px;font-size:11px;display:flex;align-items:center;justify-content:center;}
+.chat-popup{display:none;position:fixed;bottom:100px;right:28px;width:360px;height:500px;background:#0d1117;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,0.5);z-index:9998;flex-direction:column;overflow:hidden;border:1px solid #30363d;}
+.chat-popup.open{display:flex;}
+.chat-header{background:linear-gradient(135deg,#0D2B4E,#1A5276);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;}
+.chat-header h6{margin:0;color:white;font-size:14px;}
+.chat-header small{color:#aaa;font-size:11px;}
+.close-btn{background:none;border:none;color:white;font-size:18px;cursor:pointer;}
+.chat-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
+.bot-msg{background:#161b22;border-left:3px solid #00cc66;border-radius:4px 12px 12px 12px;padding:10px 12px;font-size:13px;color:#e6edf3;line-height:1.6;white-space:pre-wrap;}
+.user-msg{background:#1f4e79;border-radius:12px 12px 4px 12px;padding:10px 12px;font-size:13px;color:white;align-self:flex-end;max-width:85%;}
+.msg-label{font-size:10px;color:#8b949e;margin-bottom:3px;}
+.disclaimer-mini{margin-top:6px;background:#1a1a0e;border:1px solid #4a4a1a;border-left:3px solid #d4a017;border-radius:6px;padding:6px 10px;font-size:10px;color:#a89a5a;}
+.quick-chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px;background:#0d1117;}
+.qchip{background:#21262d;border:1px solid #30363d;border-radius:16px;padding:4px 10px;font-size:11px;color:#8b949e;cursor:pointer;white-space:nowrap;}
+.qchip:hover{border-color:#00cc66;color:#00cc66;}
+.chat-input-area{padding:10px;background:#161b22;border-top:1px solid #21262d;display:flex;gap:8px;}
+.chat-input-area input{flex:1;background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;}
+.chat-input-area input:focus{border-color:#58a6ff;}
+.chat-input-area button{background:#238636;color:white;border:none;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;}
+</style>
 </head>
 <body class="bg-light">
 
 <nav class="navbar navbar-dark bg-dark px-4">
 <span class="navbar-brand">{{ role.capitalize() }} Dashboard</span>
-<a href="/logout" class="btn btn-danger">Logout</a>
+<div class="d-flex gap-2">
+{% if role=='technician' %}
+<a href="/machines" class="btn btn-outline-light btn-sm">🖥️ Machines</a>
+{% endif %}
+<a href="/logout" class="btn btn-danger btn-sm">Logout</a>
+</div>
 </nav>
 
 <div class="container mt-4">
-
 {% if role=='technician' %}
 <a href="/add_patient_page" class="btn btn-success mb-3">+ Add Patient</a>
 {% endif %}
@@ -643,13 +670,11 @@ def dashboard():
 <div class="card-body">
 <h5>{{ p.mrn }}</h5>
 <p>Name: {{ p.name }}</p>
-
 {% if p.status=="Pending" %}
 <span class="badge bg-warning text-dark">Pending</span>
 {% else %}
 <span class="badge bg-success">Reviewed</span>
 {% endif %}
-
 <br><br>
 <a href="/view/{{ p.id }}" class="btn btn-primary btn-sm">Open Case</a>
 {% if role=='technician' %}
@@ -660,8 +685,105 @@ def dashboard():
 </div>
 {% endfor %}
 </div>
-
 </div>
+
+{% if role=='technician' %}
+<!-- Floating Chat Button -->
+<button class="chat-fab" onclick="toggleChat()" id="chatFab">
+  🤖
+  <span class="notif" id="notifBadge">1</span>
+</button>
+
+<!-- Chat Popup -->
+<div class="chat-popup" id="chatPopup">
+  <div class="chat-header">
+    <div>
+      <h6>🤖 TeleRad Assistant</h6>
+      <small>Machine & radiology AI guide</small>
+    </div>
+    <button class="close-btn" onclick="toggleChat()">✕</button>
+  </div>
+
+  <div class="chat-messages" id="chatMessages">
+    <div>
+      <div class="msg-label">🤖 Assistant</div>
+      <div class="bot-msg">👋 Hello! I'm your TeleRad AI Assistant.
+
+I can help you with:
+• Machine startup & operation
+• Patient preparation tips
+• Scan protocols & parameters
+• Troubleshooting errors
+• Radiation dose guidance
+
+What do you need help with today?</div>
+    </div>
+  </div>
+
+  <div class="quick-chips">
+    <span class="qchip" onclick="sendQuick('How do I start up the CT scanner?')">🔌 CT Startup</span>
+    <span class="qchip" onclick="sendQuick('Patient preparation steps?')">🧍 Patient prep</span>
+    <span class="qchip" onclick="sendQuick('What is CTDI and DLP?')">☢️ Dose info</span>
+    <span class="qchip" onclick="sendQuick('Machine showing error, help!')">🔧 Error help</span>
+  </div>
+
+  <div class="chat-input-area">
+    <input type="text" id="chatInput" placeholder="Ask anything..."
+           onkeypress="if(event.key==='Enter') sendMessage()">
+    <button onclick="sendMessage()" id="sendBtn">➤</button>
+  </div>
+</div>
+
+<script>
+function toggleChat() {
+  const popup = document.getElementById("chatPopup");
+  popup.classList.toggle("open");
+  document.getElementById("notifBadge").style.display = "none";
+}
+
+function sendQuick(text) {
+  document.getElementById("chatInput").value = text;
+  sendMessage();
+}
+
+async function sendMessage() {
+  const input = document.getElementById("chatInput");
+  const msg = input.value.trim();
+  if (!msg) return;
+  const messages = document.getElementById("chatMessages");
+  const sendBtn = document.getElementById("sendBtn");
+
+  messages.innerHTML += `<div style="display:flex;justify-content:flex-end;"><div class="user-msg">${msg}</div></div>`;
+  input.value = "";
+  sendBtn.textContent = "...";
+  sendBtn.disabled = true;
+  messages.scrollTop = messages.scrollHeight;
+
+  const typingId = "t" + Date.now();
+  messages.innerHTML += `<div id="${typingId}"><div class="msg-label">🤖 Assistant</div><div class="bot-msg" style="color:#8b949e;">Thinking...</div></div>`;
+  messages.scrollTop = messages.scrollHeight;
+
+  try {
+    const resp = await fetch("/dashboard_chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message: msg})
+    });
+    const data = await resp.json();
+    document.getElementById(typingId).remove();
+    messages.innerHTML += `<div><div class="msg-label">🤖 Assistant</div><div class="bot-msg">${data.reply}</div><div class="disclaimer-mini">⚕️ <b>Disclaimer:</b> For informational guidance only. Consult your biomedical engineer for critical operations.</div></div>`;
+  } catch(e) {
+    document.getElementById(typingId).remove();
+    messages.innerHTML += `<div class="bot-msg" style="color:#ff6b6b;">⚠️ Error. Try again.</div>`;
+  }
+
+  sendBtn.textContent = "➤";
+  sendBtn.disabled = false;
+  messages.scrollTop = messages.scrollHeight;
+}
+</script>
+{% endif %}
+
 </body>
 </html>
 """,patients=patients,role=session["role"])
@@ -1650,6 +1772,55 @@ def save_annotation(study_id):
 
     return {"status": "saved"}
 
+# ================= DASHBOARD CHATBOT API =================
+@app.route("/dashboard_chat", methods=["POST"])
+def dashboard_chat():
+    if "username" not in session:
+        return {"reply": "Please login first."}, 401
+
+    data = request.get_json()
+    question = data.get("message", "").strip()
+    if not question:
+        return {"reply": "Please ask a question."}
+
+    system_prompt = """You are TeleRad Assistant, an expert AI guide for radiology technicians.
+You help technicians with:
+1. Medical imaging machine operation (CT, MRI, X-Ray, Ultrasound)
+2. Patient preparation and positioning
+3. Scan protocols and parameter settings
+4. Radiation dose management and ALARA principle
+5. Equipment troubleshooting and error resolution
+6. Quality control and calibration
+7. Safety procedures and emergency protocols
+8. Maintenance schedules
+Be concise, clear and step-by-step. Use numbered lists for procedures.
+Use emojis: checkmark for confirmations, warning for warnings, clipboard for procedures, wrench for troubleshooting.
+Keep answers focused and practical for a busy technician."""
+
+    try:
+        import requests as req
+        resp = req.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+                     "Content-Type": "application/json"},
+            json={"model": "llama-3.3-70b-versatile",
+                  "messages": [
+                      {"role": "system", "content": system_prompt},
+                      {"role": "user", "content": question}
+                  ],
+                  "max_tokens": 512, "temperature": 0.7},
+            timeout=30
+        )
+        resp_data = resp.json()
+        if resp.status_code == 200:
+            reply = resp_data["choices"][0]["message"]["content"]
+        else:
+            reply = f"AI error: {resp_data.get('error',{}).get('message','Unknown')}"
+    except Exception as e:
+        reply = f"Connection error: {str(e)}"
+
+    return {"reply": reply}
+
 @app.route('/logout')
 def logout():
     session.clear()
@@ -1831,195 +2002,155 @@ def machine_chat(machine_id):
 
     # Handle user question
     if request.method == "POST":
-        question = request.form.get("question", "").strip()
-        if question:
-            manual = (machine["manual_text"] or "").strip()[:3000]
-            system_prompt = f"""You are an expert medical equipment technician assistant for radiology machines.
-Machine Name: {machine['name']}
-Type: {machine['machine_type']}
-Manufacturer: {machine['manufacturer']}
-Model Number: {machine['model_number']}
-Machine Manual: {manual if manual else "No manual uploaded. Use general medical equipment knowledge."}
-Guide technicians step by step. Be clear and beginner-friendly. Use numbered lists.
-Do NOT add disclaimer at end - added separately."""
+        question = request.form.get("question")
 
-            cur.execute("""SELECT question, answer FROM machine_chats
-                WHERE machine_id=%s ORDER BY id DESC LIMIT 4""", (machine_id,))
-            recent = list(reversed(cur.fetchall()))
-            messages = []
-            for r in recent:
-                messages.append({"role": "user", "content": r["question"]})
-                messages.append({"role": "assistant", "content": r["answer"]})
-            messages.append({"role": "user", "content": question})
+        manual = machine["manual_text"] or ""
+        manual = manual[:3000]   # 🔥 LIMIT SIZE (VERY IMPORTANT)
 
-            try:
-                import requests as req
-                resp = req.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
-                             "Content-Type": "application/json"},
-                    json={"model": "llama-3.3-70b-versatile",
-                          "messages": [{"role": "system", "content": system_prompt}] + messages,
-                          "max_tokens": 1024, "temperature": 0.7},
-                    timeout=30
-                )
-                data = resp.json()
-                answer = data["choices"][0]["message"]["content"] if resp.status_code == 200 else f"⚠️ Error: {data.get('error',{}).get('message', str(data))}"
-            except Exception as e:
-                answer = f"⚠️ AI error: {str(e)}"
+        prompt = f"""
+        You are a medical imaging assistant.
 
-            cur.execute("""INSERT INTO machine_chats (machine_id, user_name, question, answer)
-                VALUES (%s, %s, %s, %s)""", (machine_id, session["username"], question, answer))
-            conn.commit()
+        Machine Info:
+        Name: {machine.get('name', 'N/A')}
+        Type: {machine.get('machine_type', 'N/A')}
+        Manufacturer: {machine.get('manufacturer', 'N/A')}
+        Model: {machine.get('model_number', 'N/A')}
+        Manual:
+        {manual}
 
-    cur.execute("""SELECT question, answer FROM machine_chats
-        WHERE machine_id=%s ORDER BY id ASC""", (machine_id,))
+        User Question:
+        {question}
+
+        Give a clear, helpful, professional answer.
+        """
+
+        try:
+            q = question.lower()
+            manual_lower = manual.lower()
+
+            # 🔹 Rule-based + manual-aware AI
+            if "protocol" in q:
+                if "ct" in machine.get("machine_type", "").lower():
+                    answer = f"""📋 CT Scan Protocol (General Steps):
+
+            1. Patient preparation (remove metal objects)
+            2. Positioning on table
+            3. Selection of scan parameters (kVp, mAs, slice thickness)
+            4. Contrast administration (if needed)
+            5. Scan acquisition
+            6. Image reconstruction
+            7. Review images for quality
+
+            📘 Based on your machine manual:
+            {manual[:500]}
+            """
+                else:
+                    answer = "Protocol depends on machine type. Please specify more details."
+
+            elif "ctdi" in q:
+                answer = """📊 CTDI (Computed Tomography Dose Index):
+
+            CTDI represents radiation dose per slice.
+
+            Formula:
+            CTDI = (1 / nT) ∫ Dose profile dz
+
+            Practically:
+            CTDIvol = (1/pitch) × CTDIw
+
+            Used to estimate patient dose in CT scans.
+            """
+
+            elif "dlp" in q:
+                answer = """📊 DLP (Dose Length Product):
+
+            DLP = CTDIvol × Scan Length
+
+            Unit: mGy·cm
+
+            It represents total radiation exposure for the scan.
+            """
+
+            elif "dose" in q:
+                answer = """⚠️ Radiation Dose Info:
+
+            - CTDI → Dose per slice
+            - DLP → Total scan dose
+            - Always follow ALARA principle (As Low As Reasonably Achievable)
+            """
+
+            elif manual.strip():
+                # fallback using manual
+                answer = f"""📘 Based on machine manual:
+
+            {manual[:1000]}
+
+            👉 Please refine your question for more specific help."""
+            else:
+                answer = "🤖 I need more details. Please ask a specific question about the machine."
+
+        except Exception as e:
+            print("AI ERROR:", e)
+
+            if "quota" in str(e).lower() or "429" in str(e):
+                answer = "⚠️ AI quota exceeded. Please try later or contact admin."
+            else:
+                answer = "⚠️ AI service error. Try again."
+        # Save chat
+        cur.execute("""
+            INSERT INTO machine_chats (machine_id, user_name, question, answer)
+            VALUES (%s, %s, %s, %s)
+        """, (machine_id, session["username"], question, answer))
+        conn.commit()
+
+    # Load chat history
+    cur.execute("""
+        SELECT question, answer FROM machine_chats
+        WHERE machine_id=%s ORDER BY id DESC LIMIT 10
+    """, (machine_id,))
     chat_history = cur.fetchall()
+
     cur.close()
     conn.close()
 
     return render_template_string("""
-<!DOCTYPE html>
-<html>
-<head>
-<title>{{ machine.name }} Assistant</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif}
-.top-bar{background:linear-gradient(135deg,#0D2B4E,#1A5276);padding:14px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #21262d;position:sticky;top:0;z-index:100}
-.machine-badge h5{margin:0;font-size:15px;color:#58a6ff}
-.machine-badge small{color:#8b949e;font-size:11px}
-.chat-area{padding:20px;display:flex;flex-direction:column;gap:14px;padding-bottom:90px}
-.msg-wrap-user{display:flex;justify-content:flex-end}
-.msg-wrap-ai{display:flex;justify-content:flex-start}
-.msg-user{background:#1f4e79;border-radius:18px 18px 4px 18px;padding:12px 16px;max-width:72%;font-size:14px;line-height:1.6}
-.msg-ai{background:#161b22;border:1px solid #30363d;border-left:3px solid #00cc66;border-radius:4px 18px 18px 18px;padding:12px 16px;max-width:78%;font-size:14px;line-height:1.7;white-space:pre-wrap}
-.disclaimer{margin-top:10px;background:#1a1a0e;border:1px solid #4a4a1a;border-left:3px solid #d4a017;border-radius:8px;padding:8px 12px;font-size:11px;color:#a89a5a;max-width:78%;line-height:1.5}
-.msg-label{font-size:11px;color:#8b949e;margin-bottom:4px}
-.empty-state{text-align:center;color:#8b949e;padding:40px 20px}
-.empty-state h4{color:#58a6ff;margin-bottom:10px}
-.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
-.chip{background:#21262d;border:1px solid #30363d;border-radius:20px;padding:7px 14px;font-size:12px;color:#8b949e;cursor:pointer}
-.chip:hover{border-color:#58a6ff;color:#58a6ff}
-.input-bar{position:fixed;bottom:0;left:0;right:0;background:#161b22;border-top:1px solid #21262d;padding:12px 16px;display:flex;gap:10px}
-.input-bar input{flex:1;background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:10px;padding:12px 14px;font-size:14px;outline:none}
-.input-bar input:focus{border-color:#58a6ff}
-.input-bar button{background:#238636;color:white;border:none;border-radius:10px;padding:12px 18px;font-size:14px;cursor:pointer}
-</style>
-</head>
-<body>
-<div class="top-bar">
-  <a href="/machines" style="color:#8b949e;text-decoration:none;font-size:22px;">←</a>
-  <div class="machine-badge">
-    <h5>🤖 {{ machine.name }}</h5>
-    <small>{{ machine.machine_type }} · {{ machine.manufacturer }} · {{ machine.model_number }}</small>
-  </div>
-  <a href="/dashboard" class="btn btn-sm btn-outline-secondary ms-auto">🏠</a>
-</div>
-<div class="chat-area" id="chatBox">
-  {% if not chat %}
-  <div class="empty-state">
-    <h4>👋 Hello, Technician!</h4>
-    <p>I'm your dedicated assistant for the <b>{{ machine.name }}</b>.<br>Ask me anything about operating, troubleshooting or maintaining this machine.</p>
-    <div class="chips">
-      <span class="chip" onclick="fillQ('How do I start up this machine step by step?')">🔌 Startup</span>
-      <span class="chip" onclick="fillQ('What are the safety precautions?')">⚠️ Safety</span>
-      <span class="chip" onclick="fillQ('How do I position the patient?')">🧍 Positioning</span>
-      <span class="chip" onclick="fillQ('What scan protocol for brain imaging?')">📋 Protocol</span>
-      <span class="chip" onclick="fillQ('Machine showing error, how to troubleshoot?')">🔧 Troubleshoot</span>
-      <span class="chip" onclick="fillQ('How to clean and maintain this machine?')">🧹 Maintenance</span>
-      <span class="chip" onclick="fillQ('How to shut down safely?')">🔴 Shutdown</span>
-      <span class="chip" onclick="fillQ('What is the radiation dose limit?')">☢️ Dose</span>
+    <html>
+    <head>
+        <title>Machine Chat</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    </head>
+    <body class="bg-dark text-white p-4">
+
+    <h3>🤖 Chat with {{ machine.name }}</h3>
+    <a href="/machines" class="btn btn-secondary btn-sm mb-3">← Back</a>
+
+    <div style="background:#111;padding:20px;border-radius:10px;height:400px;overflow-y:auto;">
+        {% for c in chat %}
+            <p><b>You:</b> {{ c.question }}</p>
+            <p style="color:#00ff88;"><b>AI:</b> {{ c.answer }}</p>
+            <hr>
+        {% endfor %}
     </div>
-  </div>
-  {% endif %}
-  {% for c in chat %}
-  <div class="msg-wrap-user">
-    <div><div class="msg-label" style="text-align:right;">You</div>
-    <div class="msg-user">{{ c.question }}</div></div>
-  </div>
-  <div class="msg-wrap-ai">
-    <div><div class="msg-label">🤖 {{ machine.name }} Assistant</div>
-    <div class="msg-ai">{{ c.answer }}</div>
-    <div class="disclaimer">⚕️ <b>Medical Disclaimer:</b> This AI guidance is for informational support only. Always consult your certified biomedical engineer or manufacturer's technical support before performing critical operations. In emergency contact <b>{{ machine.manufacturer }}</b> support immediately.</div>
-    </div>
-  </div>
-  {% endfor %}
-</div>
-<form method="POST" class="input-bar" id="chatForm">
-  <input name="question" id="qInput" placeholder="Ask about startup, protocols, errors, maintenance..." autocomplete="off" required>
-  <button type="submit" id="sendBtn">Send ➤</button>
-</form>
-<script>
-const box=document.getElementById("chatBox");
-box.scrollTop=box.scrollHeight;
-function fillQ(t){document.getElementById("qInput").value=t;document.getElementById("qInput").focus()}
-document.getElementById("chatForm").onsubmit=function(){document.getElementById("sendBtn").textContent="Thinking...";document.getElementById("sendBtn").disabled=true};
-</script>
-</body>
-</html>
-""", machine=machine, chat=chat_history)
+
+    <form method="POST" class="mt-3">
+        <input name="question" class="form-control" placeholder="Ask something about this machine..." required>
+        <button class="btn btn-success mt-2">Send</button>
+    </form>
+
+    </body>
+    </html>
+    """, machine=machine, chat=chat_history)
 # ================= PWA MANIFEST =================
-from flask import Response
+from flask import send_from_directory
 
 @app.route("/manifest.json")
 def manifest():
-    content = '''{
-  "name": "Tele-Radiology System",
-  "short_name": "TeleRad",
-  "description": "AI-Assisted Radiology Reporting Platform",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#0d1117",
-  "theme_color": "#1A5276",
-  "orientation": "portrait",
-  "icons": [
-    {
-      "src": "/static/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/static/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ]
-}'''
-    return Response(content, mimetype="application/manifest+json")
+    return send_from_directory(".", "manifest.json", mimetype="application/manifest+json")
 
+# ================= PWA SERVICE WORKER =================
 @app.route("/service_worker.js")
 def service_worker():
-    content = """
-const CACHE_NAME = 'teleradiology-v2';
-const URLS_TO_CACHE = ['/', '/login_page', '/dashboard'];
-
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(URLS_TO_CACHE))
-  );
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
-  );
-});
-
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request).then(response => response || fetch(event.request))
-  );
-});
-"""
-    return Response(content, mimetype="application/javascript")
+    return send_from_directory(".", "service_worker.js", mimetype="application/javascript")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
