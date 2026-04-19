@@ -1821,58 +1821,52 @@ def machine_chat(machine_id):
     conn = get_db_connection()
     cur = conn.cursor()
 
+    # Get machine info
     cur.execute("SELECT * FROM machines WHERE id=%s", (machine_id,))
     machine = cur.fetchone()
+
     if not machine:
         return "Machine not found"
 
-    answer = None
 
+    # Handle user question
     if request.method == "POST":
         question = request.form.get("question", "").strip()
 
         if question:
-            manual = (machine["manual_text"] or "").strip()
+            manual = (machine["manual_text"] or "").strip()[:3000]
 
             system_prompt = f"""You are an expert medical equipment technician assistant for radiology machines.
 
 You are assigned to help technicians operate and troubleshoot this specific machine:
 
-=== MACHINE DETAILS ===
-Name         : {machine['name']}
-Type         : {machine['machine_type']}
-Manufacturer : {machine['manufacturer']}
-Model Number : {machine['model_number']}
+Machine Name: {machine['name']}
+Type: {machine['machine_type']}
+Manufacturer: {machine['manufacturer']}
+Model Number: {machine['model_number']}
 
-=== MACHINE MANUAL / KNOWLEDGE BASE ===
-{manual if manual else "No manual uploaded. Use your general medical equipment knowledge for this machine type."}
-=== END OF MANUAL ===
+Machine Manual:
+{manual if manual else "No manual uploaded. Use general medical equipment knowledge for this machine type."}
 
-YOUR ROLE — Guide radiology technicians who are new to this machine:
-1. Step-by-step startup and shutdown procedures
-2. Patient preparation and positioning
-3. Scan protocols and parameter settings (kVp, mAs, slice thickness etc.)
-4. Safety precautions and radiation dose management (ALARA principle)
-5. Error codes and troubleshooting steps
-6. Quality control and calibration checks
-7. Cleaning and maintenance schedules
-8. Emergency procedures
+YOUR ROLE - Guide radiology technicians who are new to this machine:
+- Step-by-step startup and shutdown procedures
+- Patient preparation and positioning
+- Scan protocols and parameter settings
+- Safety precautions and radiation dose management
+- Error codes and troubleshooting
+- Cleaning and maintenance
 
-RESPONSE STYLE:
-- Always be clear, step-by-step and beginner-friendly
-- Use numbered lists for procedures
-- Use emojis: ⚠️ warnings, ✅ confirmations, 📋 procedures, 🔧 troubleshooting
-- Prioritize patient and operator safety above all
-- Keep answers focused on THIS specific machine"""
+Be clear, step-by-step and beginner-friendly. Use numbered lists for procedures.
+Use emojis: warning for warnings, checkmark for confirmations, clipboard for procedures."""
 
-            # Load last 6 messages for conversation memory
+            # load last 4 messages for memory
             cur.execute("""
                 SELECT question, answer FROM machine_chats
-                WHERE machine_id=%s ORDER BY id DESC LIMIT 6
+                WHERE machine_id=%s ORDER BY id DESC LIMIT 4
             """, (machine_id,))
             recent = list(reversed(cur.fetchall()))
 
-            messages = [{"role": "system", "content": system_prompt}]
+            messages = []
             for r in recent:
                 messages.append({"role": "user",      "content": r["question"]})
                 messages.append({"role": "assistant",  "content": r["answer"]})
@@ -1880,36 +1874,29 @@ RESPONSE STYLE:
 
             try:
                 import requests as req
-                headers = {
-                    "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
-                    "Content-Type": "application/json"
-                }
-                payload = {
-                    "model": "llama3-8b-8192",
-                    "messages": messages,
-                    "max_tokens": 1024,
-                    "temperature": 0.7
-                }
                 resp = req.post(
                     "https://api.groq.com/openai/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
+                    headers={
+                        "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY')}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "llama3-8b-8192",
+                        "messages": [{"role": "system", "content": system_prompt}] + messages,
+                        "max_tokens": 1024,
+                        "temperature": 0.7
+                    },
                     timeout=30
                 )
-                resp.raise_for_status()
-                answer = resp.json()["choices"][0]["message"]["content"]
+                data = resp.json()
+                if resp.status_code == 200:
+                    answer = data["choices"][0]["message"]["content"]
+                else:
+                    answer = f"⚠️ Groq error {resp.status_code}: {data.get('error', {}).get('message', str(data))}"
 
             except Exception as e:
-                print("GROQ API ERROR:", e)
-                err = str(e).lower()
-                if "401" in err or "unauthorized" in err:
-                    answer = "⚠️ Groq API key not configured correctly. Ask admin to check GROQ_API_KEY in Render environment."
-                elif "429" in err or "rate" in err:
-                    answer = "⚠️ Rate limit reached. Please wait a moment and try again."
-                elif "timeout" in err:
-                    answer = "⚠️ Request timed out. Please try again."
-                else:
-                    answer = f"⚠️ AI error: {str(e)}"
+                print("GROQ ERROR:", e)
+                answer = f"⚠️ AI error: {str(e)}"
 
             cur.execute("""
                 INSERT INTO machine_chats (machine_id, user_name, question, answer)
@@ -1917,7 +1904,6 @@ RESPONSE STYLE:
             """, (machine_id, session["username"], question, answer))
             conn.commit()
 
-    # Load full history newest last
     cur.execute("""
         SELECT question, answer FROM machine_chats
         WHERE machine_id=%s ORDER BY id ASC
@@ -1937,90 +1923,52 @@ RESPONSE STYLE:
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',sans-serif; }
-
 .top-bar {
   background:linear-gradient(135deg,#0D2B4E,#1A5276);
-  padding:14px 20px;
-  display:flex;
-  align-items:center;
-  gap:12px;
-  border-bottom:1px solid #21262d;
+  padding:14px 20px; display:flex; align-items:center;
+  gap:12px; border-bottom:1px solid #21262d;
   position:sticky; top:0; z-index:100;
 }
 .machine-badge h5 { margin:0; font-size:15px; color:#58a6ff; }
 .machine-badge small { color:#8b949e; font-size:11px; }
-
-.chat-area {
-  padding:20px;
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-  padding-bottom:90px;
-}
-
+.chat-area { padding:20px; display:flex; flex-direction:column; gap:14px; padding-bottom:90px; }
 .msg-wrap-user { display:flex; justify-content:flex-end; }
 .msg-wrap-ai   { display:flex; justify-content:flex-start; }
-
 .msg-user {
-  background:#1f4e79;
-  border-radius:18px 18px 4px 18px;
-  padding:12px 16px;
-  max-width:72%;
-  font-size:14px;
-  line-height:1.6;
+  background:#1f4e79; border-radius:18px 18px 4px 18px;
+  padding:12px 16px; max-width:72%; font-size:14px; line-height:1.6;
 }
 .msg-ai {
-  background:#161b22;
-  border:1px solid #30363d;
+  background:#161b22; border:1px solid #30363d;
   border-left:3px solid #00cc66;
   border-radius:4px 18px 18px 18px;
-  padding:12px 16px;
-  max-width:78%;
-  font-size:14px;
-  line-height:1.7;
-  white-space:pre-wrap;
+  padding:12px 16px; max-width:78%;
+  font-size:14px; line-height:1.7; white-space:pre-wrap;
 }
-.msg-label {
-  font-size:11px;
-  color:#8b949e;
-  margin-bottom:4px;
-}
-
-.empty-state {
-  text-align:center;
-  color:#8b949e;
-  padding:40px 20px;
-}
+.msg-label { font-size:11px; color:#8b949e; margin-bottom:4px; }
+.empty-state { text-align:center; color:#8b949e; padding:40px 20px; }
 .empty-state h4 { color:#58a6ff; margin-bottom:10px; }
-.chips {
-  display:flex; flex-wrap:wrap;
-  gap:8px; justify-content:center; margin-top:16px;
-}
+.chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:16px; }
 .chip {
   background:#21262d; border:1px solid #30363d;
   border-radius:20px; padding:7px 14px;
   font-size:12px; color:#8b949e; cursor:pointer;
 }
 .chip:hover { border-color:#58a6ff; color:#58a6ff; }
-
 .input-bar {
   position:fixed; bottom:0; left:0; right:0;
-  background:#161b22;
-  border-top:1px solid #21262d;
-  padding:12px 16px;
-  display:flex; gap:10px;
+  background:#161b22; border-top:1px solid #21262d;
+  padding:12px 16px; display:flex; gap:10px;
 }
 .input-bar input {
-  flex:1; background:#21262d;
-  border:1px solid #30363d; color:#e6edf3;
-  border-radius:10px; padding:12px 14px;
+  flex:1; background:#21262d; border:1px solid #30363d;
+  color:#e6edf3; border-radius:10px; padding:12px 14px;
   font-size:14px; outline:none;
 }
 .input-bar input:focus { border-color:#58a6ff; }
 .input-bar button {
-  background:#238636; color:white;
-  border:none; border-radius:10px;
-  padding:12px 18px; font-size:14px; cursor:pointer;
+  background:#238636; color:white; border:none;
+  border-radius:10px; padding:12px 18px; font-size:14px; cursor:pointer;
 }
 .input-bar button:hover { background:#2ea043; }
 </style>
@@ -2081,12 +2029,10 @@ body { background:#0d1117; color:#e6edf3; font-family:'Segoe UI',sans-serif; }
 <script>
 const box = document.getElementById("chatBox");
 box.scrollTop = box.scrollHeight;
-
 function fillQ(text) {
   document.getElementById("qInput").value = text;
   document.getElementById("qInput").focus();
 }
-
 document.getElementById("chatForm").onsubmit = function() {
   document.getElementById("sendBtn").textContent = "Thinking...";
   document.getElementById("sendBtn").disabled = true;
